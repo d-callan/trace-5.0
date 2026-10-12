@@ -14,7 +14,7 @@ pub mod visualization;
 pub mod pipeline;
 
 pub use math::{gammaincc, ln_gamma, poisson_cdf, norm_ppf, student_t_ppf, linregress};
-pub use tn93::{Alignment, compute_pairwise_tn93, compute_fractional_substitutions};
+pub use tn93::{Alignment, AmbiguityMode, compute_pairwise_tn93, compute_fractional_substitutions, tn93_distance};
 pub use danno::{DannoEstimator, TransmissionDyad};
 pub use info_danno::{InfoDannoEstimator, AlleleFrequencyTable};
 pub use autoclock::{SteveCommunity, recursive_autoclock_deconvolution};

@@ -97,6 +97,12 @@ struct CliArgs {
     /// matrix (`tn93 -t 1.0`) if the background is to be calibrated from it.
     #[arg(long)]
     distances: Option<PathBuf>,
+
+    /// Ambiguity handling for the internal TN93 distances, as `tn93 -a`:
+    /// resolve, average, skip, gapmm, or a list of ambiguity codes to resolve
+    /// (all others averaged). Ignored with --distances.
+    #[arg(long, default_value = "RMYSKB")]
+    tn93_ambig: String,
 }
 
 fn parse_date_string(date_str: &str) -> Option<f64> {
@@ -340,6 +346,7 @@ fn main() {
         use_robust_bf: args.use_robust,
         static_distance_threshold: args.threshold,
         use_info_danno: args.info_danno,
+        tn93_ambiguity: args.tn93_ambig.clone(),
     };
 
     // Optional precomputed distance matrix (e.g. from the `tn93` binary)
@@ -367,6 +374,14 @@ fn main() {
             }
         },
     };
+
+    if supplied_matrix.is_none() {
+        println!(
+            "[*] Internal TN93 distances (tn93 -t 1.0 -l {} -a {}).",
+            trace50_core::tn93::TN93_MIN_OVERLAP,
+            args.tn93_ambig
+        );
+    }
 
     println!("[*] Executing end-to-end TRACE-5.0 pipeline...");
     let dossier = match run_trace50_with_matrix(&alignment, &config, supplied_matrix) {

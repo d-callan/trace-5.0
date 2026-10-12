@@ -64,103 +64,360 @@ pub fn iupac_base_probabilities(c: u8) -> [f64; 4] {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Port of the `tn93` binary's pairwise distance (tn93 v1.0.15 source,
+// src/tn93_shared.cc: alphabet tables and computeTN93; validated against the
+// v1.1.0 binary). The binary, run as `tn93 -t 1.0 -a RMYSKB`, produced the
+// distances the published TRACE-5.0 analyses consumed, so it is the oracle.
+// ---------------------------------------------------------------------------
+
+/// tn93 nucleotide alphabet; a character's code is its index here
+/// (`ValidChars` in tn93_shared.cc).
+pub const TN93_ALPHABET: &[u8; 18] = b"ACGTURYSWKMBDHVN?-";
+/// Code of the gap character `-`.
+pub const TN93_GAP: u8 = 17;
+/// Code of `N`, used for the `gapmm` mode.
+const TN93_N: u8 = 15;
+
 /// Minimum overlap of the `tn93` binary (`-l`, default 100): a pair is only
 /// scored when it shares MORE than this many sites at which neither sequence
 /// has a gap (`tn93_shared.cc`, computeTN93: `if (totalNonGap <= min_overlap)
 /// return -1.;`, and the -1 is never written out).
 pub const TN93_MIN_OVERLAP: usize = 100;
 
-/// Computes analytical Tamura-Nei 93 (TN93) pairwise genetic distance.
-/// Resolves ambiguities to minimize distance (matching characters share bits).
+/// tn93's saturation sentinel (`TN93_MAX_DIST`), returned when a log argument
+/// of the TN93 (or K2P) formula is not positive.
+pub const TN93_SATURATED: f64 = 1000.0;
+
+/// Largest distance kept by [`compute_pairwise_tn93`]: the `-t 1.0` threshold
+/// used to produce the reference distances (`thisD <= args.distance`). The
+/// saturation sentinel is above it, so saturated pairs are missing as well.
+pub const TN93_MAX_REPORTED: f64 = 1.0;
+
+/// `resolutions` in tn93_shared.cc: which of A, C, G, T each code can be.
+const TN93_RESOLUTIONS: [[bool; 4]; 18] = [
+    [true, false, false, false],  // A
+    [false, true, false, false],  // C
+    [false, false, true, false],  // G
+    [false, false, false, true],  // T
+    [false, false, false, true],  // U
+    [true, false, true, false],   // R
+    [false, true, false, true],   // Y
+    [false, true, true, false],   // S
+    [true, false, false, true],   // W
+    [false, false, true, true],   // K
+    [true, true, false, false],   // M
+    [false, true, true, true],    // B
+    [true, false, true, true],    // D
+    [true, true, false, true],    // H
+    [true, true, true, false],    // V
+    [true, true, true, true],     // N
+    [true, true, true, true],     // ?
+    [false, false, false, false], // -
+];
+
+/// `resolutionsCount` in tn93_shared.cc: weight given to each resolution.
+const TN93_RESOLUTION_COUNT: [f64; 18] = [
+    1.0, 1.0, 1.0, 1.0, 1.0,
+    0.5, 0.5, 0.5, 0.5, 0.5, 0.5,
+    1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0,
+    0.25, 0.25,
+    0.0,
+];
+
+/// Maps an ASCII character to its tn93 code (case-insensitive).
 ///
-/// Returns `f64::NAN` ("distance unavailable") when the two sequences share
-/// `TN93_MIN_OVERLAP` or fewer scorable sites, exactly the pairs the `tn93`
-/// binary omits from its output. Downstream consumers treat NaN the same way
-/// as a pair missing from a `--distances` CSV.
-pub fn compute_pairwise_tn93(seq_a_bits: &[u8], seq_b_bits: &[u8]) -> f64 {
-    let n = seq_a_bits.len().min(seq_b_bits.len());
-    if n == 0 {
-        return f64::NAN;
+/// Characters outside the tn93 alphabet are mapped to a gap. (The tn93 binary
+/// drops them from the sequence instead, which shifts the rest of the row and
+/// usually ends in an alignment-length error; a gap keeps columns aligned.)
+#[inline(always)]
+pub fn char_to_tn93_code(c: u8) -> u8 {
+    match c.to_ascii_uppercase() {
+        b'A' => 0,
+        b'C' => 1,
+        b'G' => 2,
+        b'T' => 3,
+        b'U' => 4,
+        b'R' => 5,
+        b'Y' => 6,
+        b'S' => 7,
+        b'W' => 8,
+        b'K' => 9,
+        b'M' => 10,
+        b'B' => 11,
+        b'D' => 12,
+        b'H' => 13,
+        b'V' => 14,
+        b'N' => 15,
+        b'?' => 16,
+        _ => TN93_GAP,
+    }
+}
+
+/// How ambiguous nucleotides enter the distance (`tn93 -a`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AmbiguityMode {
+    /// `resolve`: an ambiguity compatible with the other base counts as a match.
+    Resolve,
+    /// `average`: an ambiguity is spread over its resolutions (R vs A is
+    /// 0.5 A:A + 0.5 G:A).
+    Average,
+    /// `skip`: sites with any non-ACGT character are ignored.
+    Skip,
+    /// `gapmm`: a gap opposite a non-gap is treated as N.
+    GapMismatch,
+    /// A list such as `RMYSKB`: listed ambiguities are resolved, all others
+    /// averaged. Indexed by tn93 code.
+    Subset([bool; 18]),
+}
+
+impl Default for AmbiguityMode {
+    /// `RMYSKB`, the HIV-TRACE convention behind the reference distances.
+    fn default() -> Self {
+        AmbiguityMode::parse("RMYSKB").expect("valid default")
+    }
+}
+
+impl AmbiguityMode {
+    /// Parses a `tn93 -a` argument: `resolve`, `average`, `skip`, `gapmm`, or
+    /// a list of ambiguity codes to resolve (case-insensitive; as in tn93,
+    /// characters that are not ambiguity codes are ignored).
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s {
+            "resolve" => Ok(AmbiguityMode::Resolve),
+            "average" => Ok(AmbiguityMode::Average),
+            "skip" => Ok(AmbiguityMode::Skip),
+            "gapmm" => Ok(AmbiguityMode::GapMismatch),
+            "" => Err("empty TN93 ambiguity mode".to_string()),
+            list => {
+                let mut set = [false; 18];
+                for c in list.bytes() {
+                    let code = char_to_tn93_code(c);
+                    // tn93 initAlphabets: only codes > 3 (non-ACGT) are marked;
+                    // the gap check here also excludes characters outside the
+                    // alphabet, which tn93 ignores.
+                    if code > 3 && (code != TN93_GAP || c == b'-') {
+                        set[code as usize] = true;
+                    }
+                }
+                Ok(AmbiguityMode::Subset(set))
+            }
+        }
     }
 
-    let mut l_valid = 0usize;
-    let mut p1_count = 0usize;
-    let mut p2_count = 0usize;
-    let mut q_count = 0usize;
+    #[inline(always)]
+    fn resolves(&self, code: u8) -> bool {
+        match self {
+            AmbiguityMode::Resolve => true,
+            AmbiguityMode::Subset(set) => set[code as usize],
+            _ => false,
+        }
+    }
+}
 
-    let mut cnt_a = 0usize;
-    let mut cnt_c = 0usize;
-    let mut cnt_g = 0usize;
-    let mut cnt_t = 0usize;
+/// Raw tn93 `computeTN93` for two code sequences over sites `lo..hi`.
+///
+/// Returns `None` when the pair shares `min_overlap` or fewer non-gap sites
+/// (tn93 returns -1 and omits the pair), otherwise the distance, which is
+/// [`TN93_SATURATED`] when the formula saturates. Base frequencies are
+/// per pair: the row plus column sums of the pair's 4x4 table of (possibly
+/// fractional, for averaged ambiguities) site counts. If any base frequency
+/// is zero, the K2P formula is used, as in tn93. Floating-point operations
+/// follow the order of the C++ source so values agree to rounding.
+fn tn93_distance_range(
+    s1: &[u8],
+    s2: &[u8],
+    lo: usize,
+    hi: usize,
+    mode: &AmbiguityMode,
+    min_overlap: usize,
+) -> Option<f64> {
+    let mut float_counts = [[0.0f64; 4]; 4];
+    let mut integer_counts = [[0u64; 4]; 4];
+    let gapmm = matches!(mode, AmbiguityMode::GapMismatch);
+    let skip = matches!(mode, AmbiguityMode::Skip);
 
-    for i in 0..n {
-        let a = seq_a_bits[i];
-        let b = seq_b_bits[i];
+    for p in lo..hi {
+        let mut c1 = s1[p];
+        let mut c2 = s2[p];
+        if c1 < 4 && c2 < 4 {
+            integer_counts[c1 as usize][c2 as usize] += 1;
+            continue;
+        }
+        if c1 == TN93_GAP || c2 == TN93_GAP {
+            if !gapmm || (c1 == TN93_GAP && c2 == TN93_GAP) {
+                continue;
+            }
+            if c1 == TN93_GAP {
+                c1 = TN93_N;
+            } else {
+                c2 = TN93_N;
+            }
+        }
+        if skip {
+            continue;
+        }
 
-        if a > 0 && b > 0 {
-            l_valid += 1;
-
-            let a_or_b = a | b;
-            if (a_or_b & 0b0001) > 0 { cnt_a += 1; }
-            if (a_or_b & 0b0010) > 0 { cnt_c += 1; }
-            if (a_or_b & 0b0100) > 0 { cnt_g += 1; }
-            if (a_or_b & 0b1000) > 0 { cnt_t += 1; }
-
-            // If bits overlap, zero divergence at this site
-            if (a & b) == 0 {
-                let p1 = ((a & PURINE_MASK) > 0) && ((b & PURINE_MASK) > 0);
-                let p2 = ((a & PYRIMIDINE_MASK) > 0) && ((b & PYRIMIDINE_MASK) > 0);
-
-                if p1 {
-                    p1_count += 1;
-                } else if p2 {
-                    p2_count += 1;
-                } else {
-                    q_count += 1;
+        // ambiguityHandler
+        let (u1, u2) = (c1 as usize, c2 as usize);
+        if c1 < 4 {
+            // c1 resolved, c2 not
+            let w = TN93_RESOLUTION_COUNT[u2];
+            if w > 0.0 {
+                if mode.resolves(c2) && TN93_RESOLUTIONS[u2][u1] {
+                    integer_counts[u1][u1] += 1;
+                    continue;
+                }
+                for j in 0..4 {
+                    if TN93_RESOLUTIONS[u2][j] {
+                        float_counts[u1][j] += w;
+                    }
+                }
+            }
+        } else if c2 < 4 {
+            // c2 resolved, c1 not
+            let w = TN93_RESOLUTION_COUNT[u1];
+            if w > 0.0 {
+                if mode.resolves(c1) && TN93_RESOLUTIONS[u1][u2] {
+                    integer_counts[u2][u2] += 1;
+                    continue;
+                }
+                for i in 0..4 {
+                    if TN93_RESOLUTIONS[u1][i] {
+                        float_counts[i][u2] += w;
+                    }
+                }
+            }
+        } else {
+            // both ambiguous
+            let norm = TN93_RESOLUTION_COUNT[u1] * TN93_RESOLUTION_COUNT[u2];
+            if norm > 0.0 {
+                if mode.resolves(c1) && mode.resolves(c2) {
+                    let mut positive = [false; 4];
+                    let mut matched = 0usize;
+                    for i in 0..4 {
+                        if TN93_RESOLUTIONS[u1][i] && TN93_RESOLUTIONS[u2][i] {
+                            positive[i] = true;
+                            matched += 1;
+                        }
+                    }
+                    if matched > 0 {
+                        let norm2 = 1.0 / matched as f64;
+                        for i in 0..4 {
+                            if positive[i] {
+                                float_counts[i][i] += norm2;
+                            }
+                        }
+                        continue;
+                    }
+                }
+                for i in 0..4 {
+                    if TN93_RESOLUTIONS[u1][i] {
+                        for j in 0..4 {
+                            if TN93_RESOLUTIONS[u2][j] {
+                                float_counts[i][j] += norm;
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
-    if l_valid <= TN93_MIN_OVERLAP {
-        return f64::NAN;
+    let mut nuc_freq = [0.0f64; 4];
+    let mut total_non_gap = 0.0f64;
+    for c1 in 0..4 {
+        for c2 in 0..4 {
+            float_counts[c1][c2] += integer_counts[c1][c2] as f64;
+            let pc = float_counts[c1][c2];
+            total_non_gap += pc;
+            nuc_freq[c1] += pc;
+            nuc_freq[c2] += pc;
+        }
     }
 
-    let p1 = (p1_count as f64) / (l_valid as f64);
-    let p2 = (p2_count as f64) / (l_valid as f64);
-    let q = (q_count as f64) / (l_valid as f64);
-    let p_ham = p1 + p2 + q;
-
-    if p_ham <= 0.0 {
-        return 0.0;
+    if total_non_gap <= min_overlap as f64 {
+        return None;
     }
 
-    let tot = (cnt_a + cnt_c + cnt_g + cnt_t).max(1) as f64;
-    let f_a = ((cnt_a as f64) / tot).max(1e-4);
-    let f_c = ((cnt_c as f64) / tot).max(1e-4);
-    let f_g = ((cnt_g as f64) / tot).max(1e-4);
-    let f_t = ((cnt_t as f64) / tot).max(1e-4);
+    let freq_sum = nuc_freq[0] + nuc_freq[1] + nuc_freq[2] + nuc_freq[3];
+    let scale = 2.0 / freq_sum;
+    let auxd = 1.0 / freq_sum;
+    let nuc_f = [nuc_freq[0] * auxd, nuc_freq[1] * auxd, nuc_freq[2] * auxd, nuc_freq[3] * auxd];
+    let f_r = nuc_f[0] + nuc_f[2];
+    let f_y = nuc_f[1] + nuc_f[3];
+    let use_k2p = nuc_freq.iter().any(|&f| f == 0.0);
 
-    let f_r = f_a + f_g;
-    let f_y = f_c + f_t;
+    let ag = (float_counts[0][2] + float_counts[2][0]) * scale;
+    let ct = (float_counts[1][3] + float_counts[3][1]) * scale;
+    let tv = 1.0
+        - ((float_counts[0][0] + float_counts[1][1] + float_counts[2][2] + float_counts[3][3]) * scale
+            + ag
+            + ct);
 
-    let k1 = 2.0 * f_a * f_g / f_r;
-    let k2 = 2.0 * f_c * f_t / f_y;
-    let k3 = 2.0 * (f_r * f_y - (f_a * f_g * f_y / f_r) - (f_c * f_t * f_r / f_y));
+    let dist = if use_k2p {
+        let ti = ag + ct;
+        let a = 1.0 - 2.0 * ti - tv;
+        let c = 1.0 - 2.0 * tv;
+        if a > 0.0 && c > 0.0 {
+            -0.5 * a.ln() - 0.25 * c.ln()
+        } else {
+            TN93_SATURATED
+        }
+    } else {
+        let k1 = 2.0 * nuc_f[0] * nuc_f[2] / f_r;
+        let k2 = 2.0 * nuc_f[1] * nuc_f[3] / f_y;
+        let k3 = 2.0 * (f_r * f_y - nuc_f[0] * nuc_f[2] * f_y / f_r - nuc_f[1] * nuc_f[3] * f_r / f_y);
+        let a = 1.0 - ag / k1 - 0.5 * tv / f_r;
+        let c = 1.0 - ct / k2 - 0.5 * tv / f_y;
+        let t = 1.0 - 0.5 * tv / f_y / f_r;
+        if a > 0.0 && c > 0.0 && t > 0.0 {
+            -k1 * a.ln() - k2 * c.ln() - k3 * t.ln()
+        } else {
+            TN93_SATURATED
+        }
+    };
 
-    let arg1 = 1.0 - (f_r / (2.0 * f_a * f_g)) * p1 - (q / (2.0 * f_r));
-    let arg2 = 1.0 - (f_y / (2.0 * f_c * f_t)) * p2 - (q / (2.0 * f_y));
-    let arg3 = 1.0 - (q / (2.0 * f_r * f_y));
+    Some(if dist <= 0.0 { 0.0 } else { dist })
+}
 
-    if arg1 <= 1e-6 || arg2 <= 1e-6 || arg3 <= 1e-6 {
-        return p_ham;
+/// First and last non-gap positions of a code sequence (`None` if all gaps).
+fn non_gap_span(s: &[u8]) -> Option<(usize, usize)> {
+    let first = s.iter().position(|&c| c != TN93_GAP)?;
+    let last = s.iter().rposition(|&c| c != TN93_GAP)?;
+    Some((first, last))
+}
+
+/// Raw tn93 distance between two tn93-code sequences (see
+/// [`char_to_tn93_code`]): `None` if they share `min_overlap` or fewer
+/// non-gap sites, else the distance, possibly [`TN93_SATURATED`].
+pub fn tn93_distance(s1: &[u8], s2: &[u8], mode: &AmbiguityMode, min_overlap: usize) -> Option<f64> {
+    let n = s1.len().min(s2.len());
+    let (lo, hi) = if matches!(mode, AmbiguityMode::GapMismatch) {
+        // a gap opposite a base counts here, so every column is visited
+        (0, n)
+    } else {
+        // columns outside either sequence's non-gap span cannot contribute
+        match (non_gap_span(&s1[..n]), non_gap_span(&s2[..n])) {
+            (Some((f1, l1)), Some((f2, l2))) => (f1.max(f2), (l1.min(l2) + 1).max(f1.max(f2))),
+            _ => (0, 0),
+        }
+    };
+    tn93_distance_range(s1, s2, lo, hi, mode, min_overlap)
+}
+
+/// TN93 distance as reported by `tn93 -t 1.0 -l 100 -a <mode>`.
+///
+/// Returns `f64::NAN` ("distance unavailable") for the pairs the binary does
+/// not write: fewer than `TN93_MIN_OVERLAP + 1` shared non-gap sites, or a
+/// distance above [`TN93_MAX_REPORTED`] (which includes saturation).
+/// Downstream consumers treat NaN the same way as a pair missing from a
+/// `--distances` CSV.
+pub fn compute_pairwise_tn93(seq_a: &[u8], seq_b: &[u8], mode: &AmbiguityMode) -> f64 {
+    match tn93_distance(seq_a, seq_b, mode, TN93_MIN_OVERLAP) {
+        Some(d) if d <= TN93_MAX_REPORTED => d,
+        _ => f64::NAN,
     }
-
-    let d = -k1 * arg1.ln() - k2 * arg2.ln() - k3 * arg3.ln();
-    if !d.is_finite() || d < 0.0 {
-        return p_ham;
-    }
-    d
 }
 
 /// Computes observed fractional substitution count K and genetic distance d
@@ -205,7 +462,8 @@ pub struct Alignment {
     pub headers: Vec<String>,
     pub dates: Vec<f64>,
     pub seq_len: usize,
-    pub encoded_bits: Vec<Vec<u8>>,
+    /// Per-sequence tn93 character codes (see [`char_to_tn93_code`]).
+    pub encoded_tn93: Vec<Vec<u8>>,
     pub encoded_ints: Vec<Vec<i8>>,
     pub raw_seqs: Vec<Vec<u8>>,
 }
@@ -249,7 +507,7 @@ impl Alignment {
 
         let seq_len = raw_seqs.iter().map(|s| s.len()).max().unwrap_or(0);
 
-        let mut encoded_bits = Vec::with_capacity(headers.len());
+        let mut encoded_tn93 = Vec::with_capacity(headers.len());
         let mut encoded_ints = Vec::with_capacity(headers.len());
         let mut dates = Vec::with_capacity(headers.len());
 
@@ -259,10 +517,10 @@ impl Alignment {
                 seq.resize(seq_len, b'-');
             }
 
-            let bits: Vec<u8> = seq.iter().map(|&c| char_to_iupac_mask(c)).collect();
+            let codes: Vec<u8> = seq.iter().map(|&c| char_to_tn93_code(c)).collect();
             let ints: Vec<i8> = seq.iter().map(|&c| char_to_nuc_int(c)).collect();
 
-            encoded_bits.push(bits);
+            encoded_tn93.push(codes);
             encoded_ints.push(ints);
 
             // Attempt to parse date from header string
@@ -274,7 +532,7 @@ impl Alignment {
             headers,
             dates,
             seq_len,
-            encoded_bits,
+            encoded_tn93,
             encoded_ints,
             raw_seqs,
         })
@@ -289,13 +547,19 @@ impl Alignment {
     /// Computes full symmetric pairwise TN93 distance matrix.
     /// Returns a flattened `N x N` matrix in row-major order; pairs without
     /// sufficient overlap are `NaN` (see [`compute_pairwise_tn93`]).
+    /// Ambiguities are handled as `tn93 -a RMYSKB`.
     pub fn compute_distance_matrix(&self) -> Vec<f64> {
+        self.compute_distance_matrix_with(&AmbiguityMode::default())
+    }
+
+    /// As [`Alignment::compute_distance_matrix`], with an explicit ambiguity mode.
+    pub fn compute_distance_matrix_with(&self, mode: &AmbiguityMode) -> Vec<f64> {
         let n = self.num_sequences();
         let mut matrix = vec![0.0; n * n];
 
         for i in 0..n {
             for j in (i + 1)..n {
-                let dist = compute_pairwise_tn93(&self.encoded_bits[i], &self.encoded_bits[j]);
+                let dist = compute_pairwise_tn93(&self.encoded_tn93[i], &self.encoded_tn93[j], mode);
                 matrix[i * n + j] = dist;
                 matrix[j * n + i] = dist;
             }
@@ -325,8 +589,8 @@ mod tests {
     #[test]
     fn test_tn93_identical() {
         let s1 = b"ACGTACGT".repeat(16); // 128 sites > TN93_MIN_OVERLAP
-        let bits1: Vec<u8> = s1.iter().map(|&c| char_to_iupac_mask(c)).collect();
-        let dist = compute_pairwise_tn93(&bits1, &bits1);
+        let c1: Vec<u8> = s1.iter().map(|&c| char_to_tn93_code(c)).collect();
+        let dist = compute_pairwise_tn93(&c1, &c1, &AmbiguityMode::default());
         assert_eq!(dist, 0.0);
     }
 
@@ -335,11 +599,24 @@ mod tests {
         let s1 = b"ACGTACGTACGTACGTACGTACGT".repeat(5);
         let mut s2 = s1.clone();
         s2[0] = b'G'; // 1 transition in 120 bp
-        let bits1: Vec<u8> = s1.iter().map(|&c| char_to_iupac_mask(c)).collect();
-        let bits2: Vec<u8> = s2.iter().map(|&c| char_to_iupac_mask(c)).collect();
-        let dist = compute_pairwise_tn93(&bits1, &bits2);
+        let c1: Vec<u8> = s1.iter().map(|&c| char_to_tn93_code(c)).collect();
+        let c2: Vec<u8> = s2.iter().map(|&c| char_to_tn93_code(c)).collect();
+        let dist = compute_pairwise_tn93(&c1, &c2, &AmbiguityMode::default());
         println!("TN93 dist for 1/120 transition: {}", dist);
         assert!(dist > 0.0 && dist < 0.5);
+    }
+
+    #[test]
+    fn test_ambiguity_mode_parse() {
+        assert_eq!(AmbiguityMode::parse("resolve").unwrap(), AmbiguityMode::Resolve);
+        assert_eq!(AmbiguityMode::parse("average").unwrap(), AmbiguityMode::Average);
+        assert!(AmbiguityMode::parse("").is_err());
+        let m = AmbiguityMode::default();
+        assert_eq!(m, AmbiguityMode::parse("rmyskb").unwrap());
+        for (code, &ch) in TN93_ALPHABET.iter().enumerate() {
+            assert_eq!(char_to_tn93_code(ch) as usize, code);
+            assert_eq!(m.resolves(code as u8), b"RMYSKB".contains(&ch), "{}", ch as char);
+        }
     }
 
     #[test]

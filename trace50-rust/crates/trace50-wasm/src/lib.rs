@@ -5,9 +5,9 @@
 
 use wasm_bindgen::prelude::*;
 use trace50_core::{
-    compute_pairwise_tn93, DannoEstimator, Alignment, Trace50Config, run_trace50, run_trace50_json
+    compute_pairwise_tn93, AmbiguityMode, DannoEstimator, Alignment, Trace50Config, run_trace50, run_trace50_json
 };
-use trace50_core::tn93::char_to_iupac_mask;
+use trace50_core::tn93::char_to_tn93_code;
 
 #[wasm_bindgen(start)]
 pub fn init() {
@@ -22,13 +22,14 @@ pub fn version() -> String {
 }
 
 /// Calculates the analytical Tamura-Nei 93 (TN93) pairwise genetic distance
-/// between two nucleotide sequences with IUPAC ambiguity resolution.
-/// Returns NaN when the sequences share too few sites to be scored.
+/// between two nucleotide sequences, as `tn93 -t 1.0 -a RMYSKB`.
+/// Returns NaN when the sequences share 100 or fewer non-gap sites or the
+/// distance exceeds 1.0 (pairs tn93 would not report).
 #[wasm_bindgen]
 pub fn compute_tn93(seq_a: &str, seq_b: &str) -> f64 {
-    let bits_a: Vec<u8> = seq_a.bytes().map(char_to_iupac_mask).collect();
-    let bits_b: Vec<u8> = seq_b.bytes().map(char_to_iupac_mask).collect();
-    compute_pairwise_tn93(&bits_a, &bits_b)
+    let codes_a: Vec<u8> = seq_a.bytes().map(char_to_tn93_code).collect();
+    let codes_b: Vec<u8> = seq_b.bytes().map(char_to_tn93_code).collect();
+    compute_pairwise_tn93(&codes_a, &codes_b, &AmbiguityMode::default())
 }
 
 /// Evaluates the continuous DANNO Bayes Factor for a candidate transmission dyad.
@@ -141,11 +142,11 @@ pub fn compute_info_danno_score(
     delta_t: f64,
     mu: f64,
 ) -> f64 {
-    let bits_a: Vec<u8> = seq_a.bytes().map(char_to_iupac_mask).collect();
-    let bits_b: Vec<u8> = seq_b.bytes().map(char_to_iupac_mask).collect();
-    let dist = compute_pairwise_tn93(&bits_a, &bits_b);
+    let codes_a: Vec<u8> = seq_a.bytes().map(char_to_tn93_code).collect();
+    let codes_b: Vec<u8> = seq_b.bytes().map(char_to_tn93_code).collect();
+    let dist = compute_pairwise_tn93(&codes_a, &codes_b, &AmbiguityMode::default());
     if !dist.is_finite() {
-        // Too few shared sites for a TN93 distance (tn93 minimum overlap).
+        // No reportable TN93 distance (tn93 minimum overlap or d > 1).
         return f64::NAN;
     }
     let l = seq_a.len().min(seq_b.len());

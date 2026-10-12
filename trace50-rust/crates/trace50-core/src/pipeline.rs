@@ -17,7 +17,7 @@ use crate::chin::ChinEstimator;
 use crate::danno::DannoEstimator;
 use crate::info_danno::{AlleleFrequencyTable, InfoDannoEstimator};
 use crate::network::extract_clusters;
-use crate::tn93::Alignment;
+use crate::tn93::{Alignment, AmbiguityMode};
 use crate::visualization::*;
 
 /// Configuration parameters for TRACE-5.0.
@@ -38,6 +38,9 @@ pub struct Trace50Config {
     pub use_robust_bf: bool,
     pub static_distance_threshold: f64,
     pub use_info_danno: bool,
+    /// Ambiguity handling for the internal TN93 distances, as `tn93 -a`:
+    /// `resolve`, `average`, `skip`, `gapmm`, or a list of codes to resolve.
+    pub tn93_ambiguity: String,
 }
 
 impl Default for Trace50Config {
@@ -57,16 +60,16 @@ impl Default for Trace50Config {
             use_robust_bf: false,
             static_distance_threshold: 0.015,
             use_info_danno: false,
+            tn93_ambiguity: "RMYSKB".to_string(),
         }
     }
 }
 
 /// Executes the end-to-end TRACE-5.0 surveillance pipeline.
 ///
-/// Distances are computed internally via `Alignment::compute_distance_matrix`.
-/// To supply a precomputed matrix instead -- for example from the `tn93`
-/// binary, the HIV-TRACE field-standard implementation -- use
-/// [`run_trace50_with_matrix`].
+/// Distances are computed internally by the in-crate port of the `tn93`
+/// binary (`tn93 -t 1.0 -a <config.tn93_ambiguity>`, default RMYSKB). To
+/// supply a precomputed matrix instead, use [`run_trace50_with_matrix`].
 pub fn run_trace50(
     alignment: &Alignment,
     config: &Trace50Config,
@@ -79,20 +82,8 @@ pub fn run_trace50(
 /// `d_matrix`, when supplied, must be a row-major n x n matrix in the same
 /// sequence order as `alignment.headers`, where n = alignment.num_sequences().
 /// Non-finite entries are treated as "distance unavailable" exactly as an
-/// internally computed matrix would be.
-///
-/// This exists because the in-crate TN93 estimates empirical base frequencies
-/// from a per-site OR union of the two sequences' IUPAC bitmasks
-/// (`tn93.rs`, cnt_a..cnt_t from `a | b`), which counts presence per site
-/// rather than base occurrences. On real HIV-1 pol cohorts that inflates the
-/// variance of the distance distribution and yields distances that are not
-/// physically possible within a subtype (observed max 0.883 on a 1,879-sequence
-/// cohort, against 0.165 from the `tn93` binary on the same alignment).
-/// Because `DannoEstimator::calibrate_from_data` moment-matches the background
-/// Negative Binomial on that distribution, the inflated variance caps the
-/// attainable Bayes factor and can make the FDR threshold unreachable for
-/// every pair. Accepting an external matrix lets callers bypass that until the
-/// frequency estimator is corrected.
+/// internally computed matrix would be (the internal matrix uses NaN for the
+/// pairs `tn93` does not report: overlap <= 100 sites, or d > 1.0).
 pub fn run_trace50_with_matrix(
     alignment: &Alignment,
     config: &Trace50Config,
@@ -141,7 +132,10 @@ pub fn run_trace50_with_matrix(
             }
             m
         }
-        None => alignment.compute_distance_matrix(),
+        None => {
+            let mode = AmbiguityMode::parse(&config.tn93_ambiguity)?;
+            alignment.compute_distance_matrix_with(&mode)
+        }
     };
 
     // 3. Static Network Benchmark (e.g. d <= 1.5%)
