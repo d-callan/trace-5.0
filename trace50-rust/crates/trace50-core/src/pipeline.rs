@@ -27,6 +27,10 @@ pub struct Trace50Config {
     pub mu: f64,
     pub tau_bar: f64,
     pub omega: f64,
+    /// Ignored by the pipeline; kept so existing WASM/JSON configs still
+    /// deserialize. The background window is taken from the dated sequences
+    /// as run_danno.py does: max(span, 1.0), recalibrated to
+    /// min(max(span, 1), 30) when span > 0.5 yr.
     pub t_span: f64,
     pub alpha_adequacy: f64,
     pub fdr_threshold: f64,
@@ -175,7 +179,7 @@ pub fn run_trace50_with_matrix(
         config.mu,
         config.tau_bar,
         config.omega,
-        config.t_span.max(time_span_years),
+        time_span_years.max(1.0),
         config.alpha_adequacy,
         0.065,
         0.0004,

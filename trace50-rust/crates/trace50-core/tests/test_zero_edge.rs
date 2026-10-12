@@ -83,3 +83,31 @@ fn test_supported_edges_keep_estimates() {
     assert!((rho - CONTROL_RHO_PY).abs() <= 1e-12, "rho {} vs python {}", rho, CONTROL_RHO_PY);
     assert_eq!(d.kpi.inferred_surveillance_sampling_fraction_pct, Some(rho * 100.0));
 }
+
+/// The control dates span 0.5 yr, so run_danno.py keeps t_span = max(span, 1.0)
+/// = 1.0 (calibration only overrides it when span > 0.5). Its per-edge Bayes
+/// factors (control.py_danno.json.edges.csv) are reproduced only if the
+/// pipeline starts from the data span rather than a fixed 20-year window,
+/// which inflated every BF 20-fold on single-year cohorts. Tolerance 1e-4 as
+/// in the parity harness's internal-TN93 path: the oracle calibrates on tn93's
+/// 6-significant-digit distances (measured deviation here 8.4e-6).
+#[test]
+fn test_short_span_bayes_factors_match_python() {
+    let fasta = include_str!("fixtures/zero_edge/control.fasta");
+    let oracle = include_str!("fixtures/zero_edge/control.py_danno.json.edges.csv");
+    let alignment = Alignment::from_fasta_str(fasta).unwrap();
+    let d = run_trace50(&alignment, &Trace50Config::default()).unwrap();
+    let mut n = 0;
+    for line in oracle.lines().skip(1) {
+        let f: Vec<&str> = line.split(',').collect();
+        let want: f64 = f[4].parse().unwrap();
+        let e = d
+            .edges
+            .iter()
+            .find(|e| (e.source == f[0] && e.target == f[1]) || (e.source == f[1] && e.target == f[0]))
+            .expect("oracle edge present in dossier");
+        assert!((e.bayes_factor - want).abs() <= 1e-4 * want, "BF {} vs python {}", e.bayes_factor, want);
+        n += 1;
+    }
+    assert_eq!(n, 3);
+}
