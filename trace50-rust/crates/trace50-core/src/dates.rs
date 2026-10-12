@@ -244,12 +244,20 @@ pub fn parse_date_value(raw: &str) -> Option<f64> {
     }
 }
 
+/// Years accepted from a header `|` field: [1950, 2036), i.e. calendar years
+/// 1950-2035, the range of the decimal-year form in [`parse_date_value`].
+const PIPE_YEAR_MIN: f64 = 1950.0;
+const PIPE_YEAR_END: f64 = 2036.0;
+
 /// Collection date from a FASTA defline, as a decimal year, or `NaN` when the
 /// header carries no parseable date.
 ///
 /// Formats, in order: the DC form (`parse_dc`), `_YYYY.NN` / `_YYYY`
 /// (`parse_underscore_year`), then any `|`-delimited field holding a
-/// [`parse_date_value`] date (`ID|2013-10-22`, `ID|2013.81`).
+/// [`parse_date_value`] date (`ID|2013-10-22`, `ID|2013.81`) in years
+/// 1950-2035. The `|` rule has no counterpart in run_danno.py; the year range
+/// (that of the decimal-year form) keeps numeric ID fields such as
+/// `PT|1001|clone0` or `PT|0042` from being read as dates.
 pub fn parse_date_from_header(header: &str) -> f64 {
     let h = header.trim();
     if looks_like_dc(h) {
@@ -263,7 +271,9 @@ pub fn parse_date_from_header(header: &str) -> f64 {
     if h.contains('|') {
         for field in h.split('|') {
             if let Some(d) = parse_date_value(field) {
-                return d;
+                if (PIPE_YEAR_MIN..PIPE_YEAR_END).contains(&d) {
+                    return d;
+                }
             }
         }
     }

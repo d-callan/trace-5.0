@@ -188,7 +188,8 @@ function parseAndValidateFasta(text) {
   // engine's parser (trace50-core dates.rs): the DC form
   // B.US.2013.DC1000_0131022_PR_RT.X, _YYYY.NN / _YYYY in the defline, or a
   // '|' field holding YYYY-MM-DD, YYYY-MM, YYYY, DD-Mon-YYYY, Mon-YYYY or a
-  // decimal year. Undated sequences are excluded from DANNO, not imputed.
+  // decimal year, in years 1950-2035 (so PT|1001 is not a date). Undated
+  // sequences are excluded from DANNO, not imputed.
   let dateCount = 0;
   for (const rec of records) {
     if (headerHasDate(rec.header)) dateCount++;
@@ -219,6 +220,8 @@ function headerHasDate(header) {
   if (h.includes('|')) {
     for (const f of h.split('|')) {
       const v = f.trim().replace(/^"|"$/g, '').split('/')[0].trim();
+      const yr = v.match(/(?:^|-)(\d{4})(?:$|-|\.)/);
+      if (!yr || +yr[1] < 1950 || +yr[1] > 2035) continue;
       let m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (m) {
         const dt = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));

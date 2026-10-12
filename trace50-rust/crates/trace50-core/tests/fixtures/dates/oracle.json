@@ -131,6 +131,41 @@
    "rule": "none"
   },
   {
+   "input": "PT|1001|clone0",
+   "expected": null,
+   "rule": "none"
+  },
+  {
+   "input": "PT|0042",
+   "expected": null,
+   "rule": "none"
+  },
+  {
+   "input": "HXB2|1234|x",
+   "expected": null,
+   "rule": "none"
+  },
+  {
+   "input": "ID|1949-12-31",
+   "expected": null,
+   "rule": "none"
+  },
+  {
+   "input": "ID|2036",
+   "expected": null,
+   "rule": "none"
+  },
+  {
+   "input": "ID|2035",
+   "expected": "2035.5",
+   "rule": "pipe"
+  },
+  {
+   "input": "ID|1950-01-01",
+   "expected": "1950.0013698630137",
+   "rule": "pipe"
+  },
+  {
    "input": "seq1",
    "expected": null,
    "rule": "none"

@@ -16,7 +16,10 @@ Two Rust rules have no Python counterpart and are labelled as such in the
 fixture ("rule" column), with values still computed here, not typed:
 
 * "pipe": a header '|' field holding a metadata-form date (ID|2013-10-22),
-  value = parse_collection_date(field) under the rule above;
+  value = parse_collection_date(field) under the rule above, accepted only in
+  calendar years 1950-2035 (value in [1950, 2036)), so numeric ID fields such
+  as PT|1001 or PT|0042 are not dates. This is a Rust rule, not an oracle:
+  run_danno.parse_date leaves every such header undated;
 * "decimal": a metadata value that is a decimal year in [1950, 2035]
   (DC meta.csv form, 2013.806849), value = float(s).
 
@@ -83,7 +86,7 @@ def header_expected(h):
     if '|' in h:
         for field in h.strip().split('|'):
             fv, _ = meta_expected(field)
-            if fv is not None:
+            if fv is not None and 1950.0 <= fv < 2036.0:
                 return fv, 'pipe'
     return None, 'none'
 
@@ -115,6 +118,13 @@ HEADERS = [
     'ID|2013',
     'ID|22-Oct-2013',
     'ID|2013-02-30',
+    'PT|1001|clone0',                            # numeric ID field, not a year
+    'PT|0042',
+    'HXB2|1234|x',
+    'ID|1949-12-31',                             # outside 1950-2035
+    'ID|2036',
+    'ID|2035',
+    'ID|1950-01-01',
     'seq1',
     'A_B_C',
 ]
