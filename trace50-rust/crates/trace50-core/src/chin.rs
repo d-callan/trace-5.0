@@ -8,7 +8,7 @@
 //! - Borel branching process cluster size spectrum decay test.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use crate::math::{linregress, norm_ppf};
 
 /// Reason reported when N_act is refused because no edge is supported (E_obs = 0).
@@ -133,24 +133,24 @@ impl ChinEstimator {
         }
 
         let max_size = valid_sizes.iter().copied().max().unwrap_or(0);
-        let mut counts: HashMap<usize, usize> = HashMap::new();
+        // Sorted by size, as np.unique, so the regression sums run in the same order.
+        let mut counts: BTreeMap<usize, usize> = BTreeMap::new();
         for &s in &valid_sizes {
             *counts.entry(s).or_insert(0) += 1;
         }
 
         let mut x_vals = Vec::new();
         let mut y_vals = Vec::new();
-        let mut n_megaclusters = 0usize;
-
         for (&size, &cnt) in &counts {
-            if size > max_size_fit {
-                n_megaclusters += 1;
-            }
             if size <= max_size_fit {
                 x_vals.push(size as f64);
                 y_vals.push((cnt as f64).ln());
             }
         }
+
+        // Clusters (not distinct sizes) larger than the fit window, as
+        // Python's np.sum(sizes > max_size_fit).
+        let n_megaclusters = valid_sizes.iter().filter(|&&s| s > max_size_fit).count();
 
         let (slope, r_squared, p_value) = if x_vals.len() >= 3 {
             match linregress(&x_vals, &y_vals) {
@@ -409,10 +409,10 @@ mod tests {
         ];
         for &(n, e, n_act, lo, hi, rel) in &cases {
             let est = chin.estimate_active_population(n, e, Some(1.5), 0.95).expect("E_obs > 0 is estimable");
-            // 1e-8 relative: z comes from math::norm_ppf (Acklam's rational
-            // approximation, ~1e-9 relative error) where scipy uses an exact ppf.
+            // 1e-12 relative: math::norm_ppf is Acklam's approximation polished by a
+            // Halley step, matching scipy's exact ppf to ~1e-15.
             for (got, want) in [(est.n_act, n_act), (est.ci_lower, lo), (est.ci_upper, hi), (est.relative_error, rel)] {
-                assert!((got - want).abs() <= 1e-8 * want.abs(), "n={} e={}: {} vs python {}", n, e, got, want);
+                assert!((got - want).abs() <= 1e-12 * want.abs(), "n={} e={}: {} vs python {}", n, e, got, want);
             }
             assert_eq!(est.r0, 1.5);
         }
