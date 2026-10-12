@@ -41,6 +41,10 @@ pub struct Trace50Config {
     /// Ambiguity handling for the internal TN93 distances, as `tn93 -a`:
     /// `resolve`, `average`, `skip`, `gapmm`, or a list of codes to resolve.
     pub tn93_ambiguity: String,
+    /// Sequence length L for DANNO (k = d * L, clock rate mu * L). `None`
+    /// uses the alignment's median non-gap length
+    /// ([`Alignment::effective_len`]).
+    pub seq_len: Option<usize>,
 }
 
 impl Default for Trace50Config {
@@ -61,6 +65,7 @@ impl Default for Trace50Config {
             static_distance_threshold: 0.015,
             use_info_danno: false,
             tn93_ambiguity: "RMYSKB".to_string(),
+            seq_len: None,
         }
     }
 }
@@ -92,10 +97,13 @@ pub fn run_trace50_with_matrix(
     #[cfg(not(target_arch = "wasm32"))]
     let start_time = std::time::Instant::now();
     let n = alignment.num_sequences();
-    let l = alignment.seq_len;
+    let l = config.seq_len.unwrap_or(alignment.effective_len);
 
     if n < 2 {
         return Err("TRACE-5.0 requires at least 2 sequences to evaluate transmission networks".to_string());
+    }
+    if l == 0 {
+        return Err("sequence length L is 0: the alignment has no non-gap characters (set seq_len to override)".to_string());
     }
 
     // 1. Process dates: impute median for any NaN
@@ -403,6 +411,7 @@ pub fn run_trace50_with_matrix(
         metadata: DossierMetadata {
             num_sequences: n,
             seq_len: l,
+            alignment_width: alignment.seq_len,
             date_min,
             date_max,
             time_span_years,

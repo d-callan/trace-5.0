@@ -26,7 +26,11 @@ pub struct VisualizationDossier {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DossierMetadata {
     pub num_sequences: usize,
+    /// Sequence length L used by DANNO (median non-gap length unless overridden).
     pub seq_len: usize,
+    /// Number of alignment columns.
+    #[serde(default)]
+    pub alignment_width: usize,
     pub date_min: f64,
     pub date_max: f64,
     pub time_span_years: f64,

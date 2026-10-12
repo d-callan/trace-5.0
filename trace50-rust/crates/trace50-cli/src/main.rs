@@ -103,6 +103,11 @@ struct CliArgs {
     /// (all others averaged). Ignored with --distances.
     #[arg(long, default_value = "RMYSKB")]
     tn93_ambig: String,
+
+    /// Sequence length L used by DANNO (k = d * L). Defaults to the median
+    /// number of non-gap characters per sequence (as validation/run_danno.py).
+    #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
+    seq_len: Option<u64>,
 }
 
 fn parse_date_string(date_str: &str) -> Option<f64> {
@@ -295,10 +300,14 @@ fn main() {
         }
     };
 
+    let seq_len = args.seq_len.map(|v| v as usize).unwrap_or(alignment.effective_len);
     println!(
-        "[*] Ingested {} sequences across {} nucleotide sites.",
+        "[*] Ingested {} sequences: alignment width {}, median non-gap length {} -> L = {}{}.",
         alignment.num_sequences(),
-        alignment.seq_len
+        alignment.seq_len,
+        alignment.effective_len,
+        seq_len,
+        if args.seq_len.is_some() { " (--seq-len)" } else { "" }
     );
 
     // Merge metadata if provided
@@ -347,6 +356,7 @@ fn main() {
         static_distance_threshold: args.threshold,
         use_info_danno: args.info_danno,
         tn93_ambiguity: args.tn93_ambig.clone(),
+        seq_len: Some(seq_len),
     };
 
     // Optional precomputed distance matrix (e.g. from the `tn93` binary)

@@ -456,12 +456,40 @@ pub fn compute_fractional_substitutions(seq1: &[u8], seq2: &[u8]) -> (f64, usize
     (k_tot, valid_count, d_frac)
 }
 
+/// Median number of non-gap characters per sequence, as `validation/run_danno.py`
+/// computes the sequence length L: count the characters other than `-` in each
+/// sequence, take the numpy median (mean of the two middle values when the
+/// count is even), and truncate to an integer.
+pub fn median_nongap_len(seqs: &[Vec<u8>]) -> usize {
+    let mut counts: Vec<usize> = seqs
+        .iter()
+        .map(|s| s.iter().filter(|&&c| c != b'-').count())
+        .collect();
+    if counts.is_empty() {
+        return 0;
+    }
+    counts.sort_unstable();
+    let m = counts.len();
+    if m % 2 == 1 {
+        counts[m / 2]
+    } else {
+        // int((a + b) / 2) for non-negative a, b is floor division
+        (counts[m / 2 - 1] + counts[m / 2]) / 2
+    }
+}
+
 /// A parsed nucleotide FASTA alignment ready for TRACE-5.0 processing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Alignment {
     pub headers: Vec<String>,
     pub dates: Vec<f64>,
+    /// Alignment width (number of columns); ragged rows are padded to it.
+    /// Used by site-wise computations such as InfoDANNO.
     pub seq_len: usize,
+    /// Median per-sequence non-gap length, the default sequence length L for
+    /// DANNO (see [`median_nongap_len`]).
+    #[serde(default)]
+    pub effective_len: usize,
     /// Per-sequence tn93 character codes (see [`char_to_tn93_code`]).
     pub encoded_tn93: Vec<Vec<u8>>,
     pub encoded_ints: Vec<Vec<i8>>,
@@ -506,6 +534,7 @@ impl Alignment {
         }
 
         let seq_len = raw_seqs.iter().map(|s| s.len()).max().unwrap_or(0);
+        let effective_len = median_nongap_len(&raw_seqs);
 
         let mut encoded_tn93 = Vec::with_capacity(headers.len());
         let mut encoded_ints = Vec::with_capacity(headers.len());
@@ -532,6 +561,7 @@ impl Alignment {
             headers,
             dates,
             seq_len,
+            effective_len,
             encoded_tn93,
             encoded_ints,
             raw_seqs,
