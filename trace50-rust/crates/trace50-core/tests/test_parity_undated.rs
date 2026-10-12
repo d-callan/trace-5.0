@@ -138,7 +138,7 @@ fn assert_matches(label: &str, d: &VisualizationDossier) {
     }
     let theta = d.macro_scaling.composite_parameter_theta;
     assert!(rel_close(theta, c["theta"].as_f64().unwrap(), EXACT_REL_TOL), "{}: theta {}", label, theta);
-    let rho = d.macro_scaling.surveillance_coverage_rho;
+    let rho = d.macro_scaling.surveillance_coverage_rho.expect("rho estimable");
     assert!(rel_close(rho, c["rho"].as_f64().unwrap(), EXACT_REL_TOL), "{}: rho {}", label, rho);
 }
 

@@ -81,7 +81,9 @@ pub struct DossierKpi {
     /// "estimated", or the refusal reason when N_act is not estimable.
     #[serde(default)]
     pub inferred_active_pool_status: String,
-    pub inferred_surveillance_sampling_fraction_pct: f64,
+    /// rho = n / N_act, in percent. `null` whenever N_act is not estimable
+    /// (E_obs = 0 would give rho = 0, the reciprocal of N_act = inf).
+    pub inferred_surveillance_sampling_fraction_pct: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,7 +139,9 @@ pub struct DossierCluster {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DossierMacroScaling {
     pub composite_parameter_theta: f64,
-    pub surveillance_coverage_rho: f64,
+    /// Surveillance sampling fraction rho = n / N_act; `null` when N_act is not
+    /// estimable (see `active_population_status`).
+    pub surveillance_coverage_rho: Option<f64>,
     /// `null` when N_act is not estimable (E_obs = 0); the reason is in
     /// `active_population_status`.
     pub active_population: Option<ActivePopulationEstimate>,

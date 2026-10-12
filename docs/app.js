@@ -935,7 +935,7 @@ function renderMacroScaling(dossier) {
       </div>
       <div class="macro-panel">
         <span class="kpi-label">Surveillance Sampling Fraction (ρ)</span>
-        <span class="kpi-value" style="color:var(--signal-emerald); font-size:1.6rem;">${(macro.surveillance_coverage_rho * 100).toFixed(2)}%</span>
+        <span class="kpi-value" style="color:var(--signal-emerald); font-size:1.6rem;">${Number.isFinite(macro.surveillance_coverage_rho) ? (macro.surveillance_coverage_rho * 100).toFixed(2) + '%' : 'Not estimable'}</span>
         <span class="kpi-sub">Assumed basic R₀ = ${r0.toFixed(1)}</span>
       </div>
       <div class="macro-panel">

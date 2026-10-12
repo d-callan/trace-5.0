@@ -458,7 +458,10 @@ fn main() {
         (Some(n_act), Some(ci)) => println!("   - Active Transmitting Pool (N_act): {:.0} [CI: {:.0} - {:.0}]", n_act, ci[0], ci[1]),
         _ => println!("   - Active Transmitting Pool (N_act): {}", dossier.kpi.inferred_active_pool_status),
     }
-    println!("   - Surveillance Sampling Fraction:   {:.2}%", dossier.kpi.inferred_surveillance_sampling_fraction_pct);
+    match dossier.kpi.inferred_surveillance_sampling_fraction_pct {
+        Some(pct) => println!("   - Surveillance Sampling Fraction:   {:.2}%", pct),
+        None => println!("   - Surveillance Sampling Fraction:   not estimable (N_act not estimable)"),
+    }
     println!("   - Borel Branching Decay (R^2):      {:.4}", dossier.macro_scaling.borel_decay.r_squared);
     println!("--------------------------------------------------------------------------------");
     println!(" Resolved STEVE Communities:           {}", dossier.communities.len());

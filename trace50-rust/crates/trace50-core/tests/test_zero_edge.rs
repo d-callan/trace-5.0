@@ -7,6 +7,11 @@
 
 use trace50_core::{run_trace50, Alignment, Trace50Config, N_ACT_NOT_ESTIMABLE_NO_EDGES};
 
+/// `ChinEstimator(1.5).estimate_sampling_fraction(6, 3)`, printed by
+/// phase2/verifier-fixes/c_rho/chin_rho_oracle.py (chin_rho_oracle.json).
+/// For (6, 0) the same script gives rho 0.0 with N_act inf: rho = n / N_act.
+const CONTROL_RHO_PY: f64 = 0.6666666666666666;
+
 fn fixture_dossier() -> trace50_core::VisualizationDossier {
     let fasta = include_str!("fixtures/zero_edge/static_only.fasta");
     let alignment = Alignment::from_fasta_str(fasta).expect("fixture parses");
@@ -37,12 +42,17 @@ fn test_zero_edge_refuses_n_act_and_reduction() {
     assert!(d.macro_scaling.active_population.is_none());
     assert_eq!(d.macro_scaling.active_population_status, N_ACT_NOT_ESTIMABLE_NO_EDGES);
     assert!(d.macro_scaling.bayesian_mcmc.is_none());
+    // rho = n / N_act is refused with N_act, not reported as 0%
+    assert_eq!(d.kpi.inferred_surveillance_sampling_fraction_pct, None);
+    assert_eq!(d.macro_scaling.surveillance_coverage_rho, None);
 
     let json: serde_json::Value = serde_json::to_value(&d).unwrap();
     assert!(json["kpi"]["giant_component_reduction_pct"].is_null());
     assert!(json["kpi"]["inferred_active_transmitting_pool"].is_null());
     assert!(json["kpi"]["inferred_active_pool_ci"].is_null());
     assert!(json["macro_scaling"]["active_population"].is_null());
+    assert!(json["kpi"]["inferred_surveillance_sampling_fraction_pct"].is_null());
+    assert!(json["macro_scaling"]["surveillance_coverage_rho"].is_null());
 }
 
 /// Control (control.fasta, same sequences with each identical pair sampled half
@@ -67,4 +77,9 @@ fn test_supported_edges_keep_estimates() {
         assert!((got - want).abs() <= 1e-8 * want, "{} vs python {}", got, want);
     }
     assert!(d.macro_scaling.active_population.is_some());
+    // rho from the Python ChinEstimator(1.5).estimate_sampling_fraction(6, 3)
+    // (phase2/verifier-fixes/c_rho/chin_rho_oracle.json)
+    let rho = d.macro_scaling.surveillance_coverage_rho.unwrap();
+    assert!((rho - CONTROL_RHO_PY).abs() <= 1e-12, "rho {} vs python {}", rho, CONTROL_RHO_PY);
+    assert_eq!(d.kpi.inferred_surveillance_sampling_fraction_pct, Some(rho * 100.0));
 }

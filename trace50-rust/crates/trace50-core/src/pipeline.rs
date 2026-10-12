@@ -384,12 +384,16 @@ pub fn run_trace50_with_matrix(
     let e_supported = supported_edges.len();
     let n_chin = dated.len();
     let theta = chin.estimate_composite_parameter(n_chin, e_supported);
-    let rho = chin.estimate_sampling_fraction(n_chin, e_supported, Some(config.r0));
     let (active_pop, active_pop_status) =
         match chin.estimate_active_population(n_chin, e_supported, Some(config.r0), 0.95) {
             Ok(est) => (Some(est), "estimated".to_string()),
             Err(reason) => (None, reason),
         };
+    // rho = n / N_act is refused with N_act (E_obs = 0 gives rho = 0 only
+    // because N_act = inf).
+    let rho = active_pop
+        .as_ref()
+        .map(|_| chin.estimate_sampling_fraction(n_chin, e_supported, Some(config.r0)));
     let bayesian_mcmc = if n_chin > 0 && e_supported > 0 {
         chin.run_joint_bayesian_monte_carlo(n_chin, e_supported, 10_000, (1.2, 2.0), (0.1, 0.5), (0.0, 0.40), 42).ok()
     } else {
@@ -490,7 +494,7 @@ pub fn run_trace50_with_matrix(
             inferred_active_transmitting_pool: active_pop.as_ref().map(|a| a.n_act),
             inferred_active_pool_ci: active_pop.as_ref().map(|a| [a.ci_lower, a.ci_upper]),
             inferred_active_pool_status: active_pop_status.clone(),
-            inferred_surveillance_sampling_fraction_pct: rho * 100.0,
+            inferred_surveillance_sampling_fraction_pct: rho.map(|r| r * 100.0),
         },
         nodes,
         edges: dossier_edges,
