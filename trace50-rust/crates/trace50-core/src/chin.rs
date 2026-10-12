@@ -11,6 +11,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use crate::math::{linregress, norm_ppf};
 
+/// Reason reported when N_act is refused because no edge is supported (E_obs = 0).
+pub const N_ACT_NOT_ESTIMABLE_NO_EDGES: &str =
+    "not estimable: zero supported edges (E_obs = 0)";
+/// Reason reported when N_act is refused because there are no samples (n = 0).
+pub const N_ACT_NOT_ESTIMABLE_NO_SAMPLES: &str =
+    "not estimable: no sequences (n = 0)";
+
 /// Active transmitting population and surveillance coverage estimates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivePopulationEstimate {
@@ -66,22 +73,24 @@ impl ChinEstimator {
 
     /// Inverts quadratic scaling law to infer active transmitting population scale N_act:
     /// N_act = (R0 * n^2) / (2 * E_obs).
+    ///
+    /// Refuses (returns `Err`) when E_obs == 0 or n == 0: the inversion divides by
+    /// E_obs and its Poisson interval by sqrt(E_obs), so with no supported edges
+    /// N_act is not estimable. (The Python reference returns inf here; inf is not an
+    /// estimate and serialises to JSON null, which downstream renderers showed as 0.)
     pub fn estimate_active_population(
         &self,
         n_samples: usize,
         n_edges: usize,
         r0_opt: Option<f64>,
         confidence_level: f64,
-    ) -> ActivePopulationEstimate {
+    ) -> Result<ActivePopulationEstimate, String> {
         let r0 = r0_opt.unwrap_or(self.r0_default);
-        if n_edges == 0 || n_samples == 0 {
-            return ActivePopulationEstimate {
-                n_act: f64::INFINITY,
-                ci_lower: f64::INFINITY,
-                ci_upper: f64::INFINITY,
-                relative_error: f64::INFINITY,
-                r0,
-            };
+        if n_samples == 0 {
+            return Err(N_ACT_NOT_ESTIMABLE_NO_SAMPLES.to_string());
+        }
+        if n_edges == 0 {
+            return Err(N_ACT_NOT_ESTIMABLE_NO_EDGES.to_string());
         }
 
         let n = n_samples as f64;
@@ -95,13 +104,13 @@ impl ChinEstimator {
         let ci_lower = n_act * (-rel_err).exp();
         let ci_upper = n_act * rel_err.exp();
 
-        ActivePopulationEstimate {
+        Ok(ActivePopulationEstimate {
             n_act,
             ci_lower,
             ci_upper,
             relative_error: rel_err,
             r0,
-        }
+        })
     }
 
     /// Tests whether cluster frequencies follow subcritical Borel branching process decay.
@@ -387,6 +396,37 @@ mod tests {
         assert!(res.rho_pct.median > 0.0 && res.rho_pct.median <= 100.0);
         assert!(res.n_act.ci_low < res.n_act.median);
         assert!(res.n_act.median < res.n_act.ci_high);
+    }
+
+    /// Values from the Python reference (trace50.chin.ChinEstimator, unmodified):
+    /// parity_2026-10-12/phase2/c5-zero-edge/chin_oracle.py -> chin_oracle.json.
+    #[test]
+    fn test_active_population_matches_python_when_edges_observed() {
+        let chin = ChinEstimator::new(1.5);
+        let cases = [
+            (1879usize, 151usize, 17536.296357615895, 14950.925489241525, 20568.739384289005, 0.15949960702258312),
+            (6, 1, 27.0, 3.8033143405168723, 191.67492737424604, 1.959963984540054),
+        ];
+        for &(n, e, n_act, lo, hi, rel) in &cases {
+            let est = chin.estimate_active_population(n, e, Some(1.5), 0.95).expect("E_obs > 0 is estimable");
+            // 1e-8 relative: z comes from math::norm_ppf (Acklam's rational
+            // approximation, ~1e-9 relative error) where scipy uses an exact ppf.
+            for (got, want) in [(est.n_act, n_act), (est.ci_lower, lo), (est.ci_upper, hi), (est.relative_error, rel)] {
+                assert!((got - want).abs() <= 1e-8 * want.abs(), "n={} e={}: {} vs python {}", n, e, got, want);
+            }
+            assert_eq!(est.r0, 1.5);
+        }
+    }
+
+    /// Python returns inf for E_obs = 0 (chin_oracle.json); Rust refuses instead (D4).
+    #[test]
+    fn test_active_population_refuses_zero_edges() {
+        let chin = ChinEstimator::new(1.5);
+        let err = chin.estimate_active_population(1879, 0, Some(1.5), 0.95).unwrap_err();
+        assert_eq!(err, N_ACT_NOT_ESTIMABLE_NO_EDGES);
+        assert!(chin.estimate_active_population(0, 5, Some(1.5), 0.95).is_err());
+        // One edge is the smallest estimable case: no larger threshold is imposed.
+        assert!(chin.estimate_active_population(6, 1, Some(1.5), 0.95).is_ok());
     }
 
     #[test]

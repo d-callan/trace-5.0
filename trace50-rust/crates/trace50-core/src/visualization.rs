@@ -69,9 +69,17 @@ pub struct DossierKpi {
     pub certified_transmission_edges: usize,
     pub static_network: NetworkSummary,
     pub danno_network: NetworkSummary,
-    pub giant_component_reduction_pct: f64,
-    pub inferred_active_transmitting_pool: f64,
-    pub inferred_active_pool_ci: [f64; 2],
+    /// Percent reduction of the largest cluster, static -> DANNO. `null` when there
+    /// is no supported edge (no DANNO cluster) or no static cluster to reduce.
+    pub giant_component_reduction_pct: Option<f64>,
+    /// CHIN N_act. `null` when not estimable (E_obs = 0); see
+    /// `inferred_active_pool_status`.
+    pub inferred_active_transmitting_pool: Option<f64>,
+    /// 95% interval for N_act; `null` when N_act is not estimable.
+    pub inferred_active_pool_ci: Option<[f64; 2]>,
+    /// "estimated", or the refusal reason when N_act is not estimable.
+    #[serde(default)]
+    pub inferred_active_pool_status: String,
     pub inferred_surveillance_sampling_fraction_pct: f64,
 }
 
@@ -129,7 +137,12 @@ pub struct DossierCluster {
 pub struct DossierMacroScaling {
     pub composite_parameter_theta: f64,
     pub surveillance_coverage_rho: f64,
-    pub active_population: ActivePopulationEstimate,
+    /// `null` when N_act is not estimable (E_obs = 0); the reason is in
+    /// `active_population_status`.
+    pub active_population: Option<ActivePopulationEstimate>,
+    /// "estimated", or the refusal reason when N_act is not estimable.
+    #[serde(default)]
+    pub active_population_status: String,
     pub borel_decay: BorelDecayResult,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bayesian_mcmc: Option<ChinBayesianResult>,

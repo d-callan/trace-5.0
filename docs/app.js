@@ -405,16 +405,22 @@ function renderScorecard(dossier) {
 
   const elColl = document.getElementById('kpi-collapse');
   const elCollSub = document.getElementById('kpi-collapse-sub');
-  const redPct = kpi.giant_component_reduction_pct.toFixed(1);
-  if (elColl) elColl.textContent = `${redPct}%`;
+  // null when there is no supported DANNO cluster (E_obs = 0): nothing to reduce to.
+  const red = kpi.giant_component_reduction_pct;
+  if (elColl) elColl.textContent = Number.isFinite(red) ? `${red.toFixed(1)}%` : 'n/a';
   if (elCollSub) elCollSub.textContent = `Static max ${kpi.static_network.max_cluster_size} → DANNO max ${kpi.danno_network.max_cluster_size}`;
 
   const elChin = document.getElementById('kpi-chin');
   const elChinSub = document.getElementById('kpi-chin-sub');
   const nAct = kpi.inferred_active_transmitting_pool;
   const ci = kpi.inferred_active_pool_ci;
-  if (elChin) elChin.textContent = nAct > 0 ? Math.round(nAct).toLocaleString() : 'N/A';
-  if (elChinSub) elChinSub.textContent = ci ? `95% CrI: [${Math.round(ci[0]).toLocaleString()}, ${Math.round(ci[1]).toLocaleString()}]` : 'Incomplete coverage';
+  // N_act is null when not estimable (E_obs = 0); the dossier carries the reason.
+  const nActOk = Number.isFinite(nAct) && nAct > 0;
+  const ciOk = Array.isArray(ci) && ci.every(Number.isFinite);
+  if (elChin) elChin.textContent = nActOk ? Math.round(nAct).toLocaleString() : 'Not estimable';
+  if (elChinSub) elChinSub.textContent = nActOk && ciOk
+    ? `95% CrI: [${Math.round(ci[0]).toLocaleString()}, ${Math.round(ci[1]).toLocaleString()}]`
+    : (kpi.inferred_active_pool_status || 'Not estimable: zero supported edges (E_obs = 0)');
 }
 
 // -----------------------------------------------------------------------------
@@ -911,17 +917,26 @@ function renderMacroScaling(dossier) {
     return;
   }
 
+  // active_population is null when N_act is not estimable (E_obs = 0).
+  const ap = macro.active_population;
+  const apOk = ap && Number.isFinite(ap.n_act) && Number.isFinite(ap.ci_lower) && Number.isFinite(ap.ci_upper);
+  const nActText = apOk ? Math.round(ap.n_act).toLocaleString() : 'Not estimable';
+  const nActSub = apOk
+    ? `95% CrI: [${Math.round(ap.ci_lower).toLocaleString()}, ${Math.round(ap.ci_upper).toLocaleString()}]`
+    : (macro.active_population_status || 'Not estimable: zero supported edges (E_obs = 0)');
+  const r0 = ap ? ap.r0 : dossier.metadata.parameters.r0;
+
   container.innerHTML = `
     <div class="macro-grid">
       <div class="macro-panel">
         <span class="kpi-label">Active Transmitting Pool (N_act)</span>
-        <span class="kpi-value" style="color:var(--signal-cobalt); font-size:1.6rem;">${Math.round(macro.active_population.n_act).toLocaleString()}</span>
-        <span class="kpi-sub">95% CrI: [${Math.round(macro.active_population.ci_lower).toLocaleString()}, ${Math.round(macro.active_population.ci_upper).toLocaleString()}]</span>
+        <span class="kpi-value" style="color:var(--signal-cobalt); font-size:1.6rem;">${nActText}</span>
+        <span class="kpi-sub">${nActSub}</span>
       </div>
       <div class="macro-panel">
         <span class="kpi-label">Surveillance Sampling Fraction (ρ)</span>
         <span class="kpi-value" style="color:var(--signal-emerald); font-size:1.6rem;">${(macro.surveillance_coverage_rho * 100).toFixed(2)}%</span>
-        <span class="kpi-sub">Assumed basic R₀ = ${macro.active_population.r0.toFixed(1)}</span>
+        <span class="kpi-sub">Assumed basic R₀ = ${r0.toFixed(1)}</span>
       </div>
       <div class="macro-panel">
         <span class="kpi-label">Borel Branching Decay</span>

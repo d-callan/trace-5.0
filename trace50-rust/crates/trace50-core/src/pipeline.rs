@@ -362,10 +362,12 @@ pub fn run_trace50_with_matrix(
         extract_clusters(n, &supported_edges, &dates);
     let supported_clustered_count = supported_cluster_assign.iter().filter(|&&c| c > 0).count();
 
-    let reduction_pct = if static_giant_size > 0 {
-        ((static_giant_size as f64 - supported_giant_size as f64) / (static_giant_size as f64)) * 100.0
+    // No supported edge means no DANNO cluster: there is nothing to compare with the
+    // static giant component, so the reduction is not reported (it is not 100%).
+    let reduction_pct = if static_giant_size > 0 && supported_giant_size > 0 {
+        Some(((static_giant_size as f64 - supported_giant_size as f64) / (static_giant_size as f64)) * 100.0)
     } else {
-        0.0
+        None
     };
 
     // 5. STEVE / AutoClock Spectral Deconvolution
@@ -398,7 +400,11 @@ pub fn run_trace50_with_matrix(
     let e_supported = supported_edges.len();
     let theta = chin.estimate_composite_parameter(n, e_supported);
     let rho = chin.estimate_sampling_fraction(n, e_supported, Some(config.r0));
-    let active_pop = chin.estimate_active_population(n, e_supported, Some(config.r0), 0.95);
+    let (active_pop, active_pop_status) =
+        match chin.estimate_active_population(n, e_supported, Some(config.r0), 0.95) {
+            Ok(est) => (Some(est), "estimated".to_string()),
+            Err(reason) => (None, reason),
+        };
     let bayesian_mcmc = if n > 0 && e_supported > 0 {
         chin.run_joint_bayesian_monte_carlo(n, e_supported, 10_000, (1.2, 2.0), (0.1, 0.5), (0.0, 0.40), 42).ok()
     } else {
@@ -496,8 +502,9 @@ pub fn run_trace50_with_matrix(
                 max_cluster_size: supported_giant_size,
             },
             giant_component_reduction_pct: reduction_pct,
-            inferred_active_transmitting_pool: active_pop.n_act,
-            inferred_active_pool_ci: [active_pop.ci_lower, active_pop.ci_upper],
+            inferred_active_transmitting_pool: active_pop.as_ref().map(|a| a.n_act),
+            inferred_active_pool_ci: active_pop.as_ref().map(|a| [a.ci_lower, a.ci_upper]),
+            inferred_active_pool_status: active_pop_status.clone(),
             inferred_surveillance_sampling_fraction_pct: rho * 100.0,
         },
         nodes,
@@ -508,6 +515,7 @@ pub fn run_trace50_with_matrix(
             composite_parameter_theta: theta,
             surveillance_coverage_rho: rho,
             active_population: active_pop,
+            active_population_status: active_pop_status,
             borel_decay,
             bayesian_mcmc,
         },

@@ -448,14 +448,16 @@ fn main() {
     println!("   - Total Clusters:                   {}", dossier.kpi.danno_network.total_clusters);
     println!("   - Clustered Individuals:            {}", dossier.kpi.danno_network.clustered_individuals);
     println!("   - Giant Component Size:             {} patients", dossier.kpi.danno_network.max_cluster_size);
-    println!("   - Giant Component Reduction:        {:.1}%", dossier.kpi.giant_component_reduction_pct);
+    match dossier.kpi.giant_component_reduction_pct {
+        Some(pct) => println!("   - Giant Component Reduction:        {:.1}%", pct),
+        None => println!("   - Giant Component Reduction:        n/a (no supported DANNO cluster)"),
+    }
     println!("--------------------------------------------------------------------------------");
     println!(" CHIN Macro-Scale Epidemiological Scaling:");
-    println!("   - Active Transmitting Pool (N_act): {:.0} [CI: {:.0} - {:.0}]",
-        dossier.kpi.inferred_active_transmitting_pool,
-        dossier.kpi.inferred_active_pool_ci[0],
-        dossier.kpi.inferred_active_pool_ci[1]
-    );
+    match (dossier.kpi.inferred_active_transmitting_pool, dossier.kpi.inferred_active_pool_ci) {
+        (Some(n_act), Some(ci)) => println!("   - Active Transmitting Pool (N_act): {:.0} [CI: {:.0} - {:.0}]", n_act, ci[0], ci[1]),
+        _ => println!("   - Active Transmitting Pool (N_act): {}", dossier.kpi.inferred_active_pool_status),
+    }
     println!("   - Surveillance Sampling Fraction:   {:.2}%", dossier.kpi.inferred_surveillance_sampling_fraction_pct);
     println!("   - Borel Branching Decay (R^2):      {:.4}", dossier.macro_scaling.borel_decay.r_squared);
     println!("--------------------------------------------------------------------------------");
