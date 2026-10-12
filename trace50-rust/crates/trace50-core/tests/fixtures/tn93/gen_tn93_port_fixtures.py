@@ -7,13 +7,16 @@ Writes, next to this script:
                                 for mode in RMYSKB, resolve, average, skip, gapmm
   ambig_toy_RMYSKB.csv          `tn93 -t 1.0 -a RMYSKB` (the reported pair set)
   dc80.fasta                    first 80 sequences of the Washington, DC alignment
-                                (Perez-Losada 2017; scratchpad dc/msa.fasta), with
+                                (Perez-Losada 2017; validation/results/
+                                Perez-Losada-2017-28961263/msa.fasta), with
                                 columns that are gaps in all 80 removed (they cannot
                                 change any pairwise TN93 value; this keeps the
                                 fixture at ~150 kB)
   dc80_RMYSKB.csv, dc80_resolve.csv   `tn93 -t 1.0 -a <mode>` on dc80.fasta
 
-All tn93 runs use the default minimum overlap (-l 100).
+All tn93 runs use the default minimum overlap (-l 100). tn93 is multithreaded
+and writes pairs in a run-dependent order, so the data rows of every CSV are
+sorted (header first); reruns are byte-identical.
 Run: python3 gen_tn93_port_fixtures.py [path/to/dc/msa.fasta]
 """
 import os
@@ -22,15 +25,20 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# HERE = <trace5>/code/trace50-rust/crates/trace50-core/tests/fixtures/tn93
+PROJECT_ROOT = os.path.abspath(os.path.join(HERE, *[".."] * 7))
 DC_MSA = (sys.argv[1] if len(sys.argv) > 1 else
-          "/tmp/claude-1001/-home-sweaver-projects-programming-trace5-code/"
-          "cd977164-ada2-43d0-9240-f819c1ba829a/scratchpad/dc/msa.fasta")
+          os.path.join(PROJECT_ROOT, "validation", "results", "Perez-Losada-2017-28961263", "msa.fasta"))
 
 
 def tn93(fasta, out, threshold, mode):
     # tn93 prints its run summary JSON on stdout; the pair list goes to -o
     subprocess.run(["tn93", "-q", "-t", threshold, "-a", mode, "-o", out, fasta],
                    check=True, stdout=subprocess.DEVNULL)
+    with open(out) as fh:
+        lines = fh.read().splitlines()
+    with open(out, "w") as fh:
+        fh.write("\n".join([lines[0]] + sorted(lines[1:])) + "\n")
 
 
 def write_fasta(path, records):
