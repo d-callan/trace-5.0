@@ -60,6 +60,25 @@ The optimized native binary will be generated at `target/release/trace50`.
 - `autoclock_communities.csv`: Resolved STEVE spectral communities with evolutionary velocities $\mu$, $t_{\text{MRCA}}$, and Fieller bounds.
 - `patient_surveillance_assignments.csv`: Patient-level cluster and community assignments with operational triage tiers.
 
+### Tests and the Python parity harness
+```bash
+cargo test --release                                                   # all tests
+cargo test --release -p trace50-core --test test_parity_golden -- --nocapture
+```
+`test_parity_golden` compares the engine with golden files in
+`crates/trace50-core/tests/fixtures/parity/`. The cohort is a fixed
+200-sequence subset of the Washington, DC alignment. The golden files were
+produced by `tn93 -t 1.0 -a RMYSKB`, by `validation/run_danno.py` (the Python
+reference) on those distances, by `hivnetworkcsv -t 0.015` and by
+`trace50.chin`. The test asserts that the following match: the TN93 pair set
+and distances, L, the background calibration, the supported-edge set with
+BF/PEP/q, the cluster and static partitions, and the CHIN values. It checks
+both the internal-TN93 path and the precomputed-distance path, and it runs
+without Python or tn93. To regenerate the golden files, run
+`python3 scripts/regen_parity_golden.py`; add `--select` to re-derive the
+subset from the full DC alignment. The fixture README records the selection
+rule, the commands and the tool versions.
+
 ---
 
 ## 3. Quickstart: WebAssembly (WASM) & Browser Runtime
