@@ -64,12 +64,23 @@ pub fn iupac_base_probabilities(c: u8) -> [f64; 4] {
     }
 }
 
+/// Minimum overlap of the `tn93` binary (`-l`, default 100): a pair is only
+/// scored when it shares MORE than this many sites at which neither sequence
+/// has a gap (`tn93_shared.cc`, computeTN93: `if (totalNonGap <= min_overlap)
+/// return -1.;`, and the -1 is never written out).
+pub const TN93_MIN_OVERLAP: usize = 100;
+
 /// Computes analytical Tamura-Nei 93 (TN93) pairwise genetic distance.
 /// Resolves ambiguities to minimize distance (matching characters share bits).
+///
+/// Returns `f64::NAN` ("distance unavailable") when the two sequences share
+/// `TN93_MIN_OVERLAP` or fewer scorable sites, exactly the pairs the `tn93`
+/// binary omits from its output. Downstream consumers treat NaN the same way
+/// as a pair missing from a `--distances` CSV.
 pub fn compute_pairwise_tn93(seq_a_bits: &[u8], seq_b_bits: &[u8]) -> f64 {
     let n = seq_a_bits.len().min(seq_b_bits.len());
     if n == 0 {
-        return 0.0;
+        return f64::NAN;
     }
 
     let mut l_valid = 0usize;
@@ -111,8 +122,8 @@ pub fn compute_pairwise_tn93(seq_a_bits: &[u8], seq_b_bits: &[u8]) -> f64 {
         }
     }
 
-    if l_valid == 0 {
-        return 0.0;
+    if l_valid <= TN93_MIN_OVERLAP {
+        return f64::NAN;
     }
 
     let p1 = (p1_count as f64) / (l_valid as f64);
@@ -276,7 +287,8 @@ impl Alignment {
     }
 
     /// Computes full symmetric pairwise TN93 distance matrix.
-    /// Returns a flattened `N x N` matrix in row-major order.
+    /// Returns a flattened `N x N` matrix in row-major order; pairs without
+    /// sufficient overlap are `NaN` (see [`compute_pairwise_tn93`]).
     pub fn compute_distance_matrix(&self) -> Vec<f64> {
         let n = self.num_sequences();
         let mut matrix = vec![0.0; n * n];
@@ -312,7 +324,7 @@ mod tests {
 
     #[test]
     fn test_tn93_identical() {
-        let s1 = b"ACGTACGT";
+        let s1 = b"ACGTACGT".repeat(16); // 128 sites > TN93_MIN_OVERLAP
         let bits1: Vec<u8> = s1.iter().map(|&c| char_to_iupac_mask(c)).collect();
         let dist = compute_pairwise_tn93(&bits1, &bits1);
         assert_eq!(dist, 0.0);
@@ -320,12 +332,13 @@ mod tests {
 
     #[test]
     fn test_tn93_transition() {
-        let s1 = b"ACGTACGTACGTACGTACGTACGT";
-        let s2 = b"GCGTACGTACGTACGTACGTACGT"; // 1 transition in 24 bp
+        let s1 = b"ACGTACGTACGTACGTACGTACGT".repeat(5);
+        let mut s2 = s1.clone();
+        s2[0] = b'G'; // 1 transition in 120 bp
         let bits1: Vec<u8> = s1.iter().map(|&c| char_to_iupac_mask(c)).collect();
         let bits2: Vec<u8> = s2.iter().map(|&c| char_to_iupac_mask(c)).collect();
         let dist = compute_pairwise_tn93(&bits1, &bits2);
-        println!("TN93 dist for 1/24 transition: {}", dist);
+        println!("TN93 dist for 1/120 transition: {}", dist);
         assert!(dist > 0.0 && dist < 0.5);
     }
 

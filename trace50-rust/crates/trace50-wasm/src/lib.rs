@@ -23,6 +23,7 @@ pub fn version() -> String {
 
 /// Calculates the analytical Tamura-Nei 93 (TN93) pairwise genetic distance
 /// between two nucleotide sequences with IUPAC ambiguity resolution.
+/// Returns NaN when the sequences share too few sites to be scored.
 #[wasm_bindgen]
 pub fn compute_tn93(seq_a: &str, seq_b: &str) -> f64 {
     let bits_a: Vec<u8> = seq_a.bytes().map(char_to_iupac_mask).collect();
@@ -143,6 +144,10 @@ pub fn compute_info_danno_score(
     let bits_a: Vec<u8> = seq_a.bytes().map(char_to_iupac_mask).collect();
     let bits_b: Vec<u8> = seq_b.bytes().map(char_to_iupac_mask).collect();
     let dist = compute_pairwise_tn93(&bits_a, &bits_b);
+    if !dist.is_finite() {
+        // Too few shared sites for a TN93 distance (tn93 minimum overlap).
+        return f64::NAN;
+    }
     let l = seq_a.len().min(seq_b.len());
     let danno = DannoEstimator::new(l, mu, 1.0, 2.0, 20.0, 0.05, 0.065, 0.0004);
     let base_bf = danno.compute_bayes_factor(dist, delta_t);
