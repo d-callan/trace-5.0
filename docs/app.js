@@ -498,7 +498,7 @@ function renderNetworkGraph(dossier) {
   if (currentNetworkMode === 'danno') {
     filteredEdges = dossier.edges.filter(e => e.status === 'supported_transmission' || e.status === 'certified_transmission');
   } else if (currentNetworkMode === 'violations') {
-    filteredEdges = dossier.edges.filter(e => e.status === 'clock_violation' || (e.p_adequacy !== undefined && e.p_adequacy < alphaAdequacy));
+    filteredEdges = dossier.edges.filter(e => e.status === 'clock_violation' || (e.p_adequacy != null && e.p_adequacy < alphaAdequacy));
   } else {
     // Static mode: All edges satisfying static threshold or flagged is_static
     filteredEdges = dossier.edges.filter(e => e.is_static || e.distance <= staticThreshold);
@@ -634,8 +634,8 @@ function renderNetworkGraph(dossier) {
         <div><strong>DYAD:</strong> ${d.source.id} ↔ ${d.target.id}</div>
         <div><strong>GENETIC DISTANCE d:</strong> ${(d.distance * 100).toFixed(2)}%</div>
         <div><strong>SAMPLING DELAY ΔT:</strong> ${d.delta_t != null ? d.delta_t.toFixed(2) + ' yr' : 'N/A (undated)'}</div>
-        <div><strong>BAYES FACTOR:</strong> ${d.bf > 0 ? d.bf.toExponential(2) : '0.00'}</div>
-        <div><strong>FDR q:</strong> ${d.q !== undefined ? d.q.toFixed(4) : 'N/A'}</div>
+        <div><strong>BAYES FACTOR:</strong> ${d.bf == null ? 'N/A' : d.bf > 0 ? d.bf.toExponential(2) : '0.00'}</div>
+        <div><strong>FDR q:</strong> ${d.q != null ? d.q.toFixed(4) : 'N/A'}</div>
         <div><strong>STATUS:</strong> <span style="font-weight:700;">${d.status.toUpperCase()}</span></div>
       `)
       .style("left", (event.pageX + 12) + "px")
