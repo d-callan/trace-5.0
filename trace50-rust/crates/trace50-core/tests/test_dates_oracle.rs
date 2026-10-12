@@ -69,10 +69,11 @@ fn test_alignment_reads_date_from_full_defline() {
     assert!(aln.dates[1].is_nan());
 }
 
-/// Undated sequences are excluded from DANNO, as run_danno.py drops them:
-/// the dated sequences give the same scored dyads (same background
-/// calibration, BF, q) whether or not undated sequences are in the alignment,
-/// and no dyad touches an undated sequence.
+/// Undated sequences are excluded from DANNO and from the static network, as
+/// run_danno.py drops them before both arms: the dated sequences give the same
+/// scored dyads (same background calibration, BF, q), the same static and
+/// DANNO networks and the same CHIN values whether or not undated sequences
+/// are in the alignment, and no edge touches an undated sequence.
 #[test]
 fn test_undated_sequences_excluded_not_imputed() {
     // distinct sequences so the background calibration has spread
@@ -112,7 +113,6 @@ fn test_undated_sequences_excluded_not_imputed() {
         let mut v: Vec<(String, String, String, String, String)> = d
             .edges
             .iter()
-            .filter(|e| e.status != "static_undated")
             .map(|e| {
                 (e.source.clone(), e.target.clone(), format!("{:e}", e.bayes_factor),
                  format!("{:e}", e.q_value), e.status.clone())
@@ -124,9 +124,15 @@ fn test_undated_sequences_excluded_not_imputed() {
     assert!(!scored(&db).is_empty());
     assert_eq!(scored(&da), scored(&db));
     for e in &da.edges {
-        let touches_undated = e.source.starts_with('u') || e.target.starts_with('u');
-        assert_eq!(touches_undated, e.status == "static_undated", "{:?}", (&e.source, &e.target, &e.status));
+        assert!(!e.source.starts_with('u') && !e.target.starts_with('u'), "{:?}", (&e.source, &e.target, &e.status));
     }
+    assert_eq!(
+        serde_json::to_value(&da.kpi.static_network).unwrap(),
+        serde_json::to_value(&db.kpi.static_network).unwrap()
+    );
+    assert_eq!(da.kpi.giant_component_reduction_pct, db.kpi.giant_component_reduction_pct);
+    assert_eq!(da.kpi.inferred_active_transmitting_pool, db.kpi.inferred_active_transmitting_pool);
+    assert_eq!(da.macro_scaling.surveillance_coverage_rho, db.macro_scaling.surveillance_coverage_rho);
     for node in &da.nodes {
         assert_eq!(node.id.starts_with('u'), node.date.is_nan());
     }

@@ -32,7 +32,8 @@ pub struct DossierMetadata {
     #[serde(default)]
     pub alignment_width: usize,
     /// Sequences without a parseable collection date. They are excluded from
-    /// DANNO and AutoClock (never imputed); their `date` is null.
+    /// DANNO, the static network, AutoClock and the CHIN sample size (never
+    /// imputed); their `date` is null and they have no edges.
     #[serde(default)]
     pub num_undated: usize,
     pub date_min: f64,

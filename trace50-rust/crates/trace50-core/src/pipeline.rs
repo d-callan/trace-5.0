@@ -106,11 +106,11 @@ pub fn run_trace50_with_matrix(
         return Err("sequence length L is 0: the alignment has no non-gap characters (set seq_len to override)".to_string());
     }
 
-    // 1. Dates. Undated sequences (NaN) are excluded from everything that
-    // needs a sampling interval -- DANNO calibration and dyad scoring, and
-    // AutoClock -- and are never given an imputed date, as in
-    // validation/run_danno.py. They stay in the alignment, the static
-    // network and the node list.
+    // 1. Dates. Undated sequences (NaN) are never given an imputed date. As
+    // validation/run_danno.py drops them before both of its arms, they are
+    // excluded from DANNO (calibration and dyad scoring), from the static
+    // network it is compared with, from AutoClock and from the CHIN sample
+    // size. They stay in the alignment and the node list, with no edges.
     let dates = alignment.dates.clone();
     let dated: Vec<usize> = (0..n).filter(|&i| dates[i].is_finite()).collect();
     let num_undated = n - dated.len();
@@ -148,12 +148,14 @@ pub fn run_trace50_with_matrix(
         }
     };
 
-    // 3. Static Network Benchmark (e.g. d <= 1.5%)
+    // 3. Static Network Benchmark (e.g. d <= 1.5%), over the dated sequences
+    // (run_danno.py's 'static_<t>_on_dated_subset'), so that it and the DANNO
+    // network are built on the same sequences.
     let mut static_edges = Vec::new();
     let mut degree_static = vec![0usize; n];
 
-    for i in 0..n {
-        for j in (i + 1)..n {
+    for (a, &i) in dated.iter().enumerate() {
+        for &j in &dated[(a + 1)..] {
             let dist = d_matrix[i * n + j];
             if dist <= config.static_distance_threshold {
                 static_edges.push((i, j, dist));
@@ -302,25 +304,6 @@ pub fn run_trace50_with_matrix(
         let p_pair = (i.min(j), i.max(j));
         if !seen_pairs.contains(&p_pair) {
             seen_pairs.insert(p_pair);
-            if !(dates[i].is_finite() && dates[j].is_finite()) {
-                // no sampling interval: not scored, not placed in phase space
-                dossier_edges.push(DossierEdge {
-                    source: alignment.headers[i].clone(),
-                    target: alignment.headers[j].clone(),
-                    source_idx: i,
-                    target_idx: j,
-                    distance: dist,
-                    delta_t_years: f64::NAN,
-                    k_substitutions: (dist * (l as f64)).max(0.0),
-                    bayes_factor: f64::NAN,
-                    pep: f64::NAN,
-                    q_value: f64::NAN,
-                    p_adequacy: f64::NAN,
-                    status: "static_undated".to_string(),
-                    is_static: true,
-                });
-                continue;
-            }
             let dt = (dates[i] - dates[j]).abs();
             let k = (dist * (l as f64)).max(0.0);
             let (p_adeq, is_adequate) = danno.check_clock_adequacy(k, dt, None);
@@ -395,18 +378,20 @@ pub fn run_trace50_with_matrix(
         }
     }
 
-    // 6. CHIN Macro-Epidemic Parameter Estimation
+    // 6. CHIN Macro-Epidemic Parameter Estimation. The sample size is the
+    // number of dated sequences: only they can carry a supported edge.
     let chin = ChinEstimator::new(config.r0);
     let e_supported = supported_edges.len();
-    let theta = chin.estimate_composite_parameter(n, e_supported);
-    let rho = chin.estimate_sampling_fraction(n, e_supported, Some(config.r0));
+    let n_chin = dated.len();
+    let theta = chin.estimate_composite_parameter(n_chin, e_supported);
+    let rho = chin.estimate_sampling_fraction(n_chin, e_supported, Some(config.r0));
     let (active_pop, active_pop_status) =
-        match chin.estimate_active_population(n, e_supported, Some(config.r0), 0.95) {
+        match chin.estimate_active_population(n_chin, e_supported, Some(config.r0), 0.95) {
             Ok(est) => (Some(est), "estimated".to_string()),
             Err(reason) => (None, reason),
         };
-    let bayesian_mcmc = if n > 0 && e_supported > 0 {
-        chin.run_joint_bayesian_monte_carlo(n, e_supported, 10_000, (1.2, 2.0), (0.1, 0.5), (0.0, 0.40), 42).ok()
+    let bayesian_mcmc = if n_chin > 0 && e_supported > 0 {
+        chin.run_joint_bayesian_monte_carlo(n_chin, e_supported, 10_000, (1.2, 2.0), (0.1, 0.5), (0.0, 0.40), 42).ok()
     } else {
         None
     };

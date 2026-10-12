@@ -307,7 +307,7 @@ fn main() {
             num_undated,
             alignment.num_sequences()
         );
-        eprintln!("[!] DANNO and AutoClock (not imputed) and appear only in the static network.");
+        eprintln!("[!] DANNO, the static network, AutoClock and CHIN (not imputed); as in run_danno.py.");
         eprintln!("================================================================================");
     } else {
         println!("[*] Collection dates: all {} sequences dated.", alignment.num_sequences());
