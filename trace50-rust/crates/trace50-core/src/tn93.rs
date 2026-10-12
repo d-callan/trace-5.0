@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::dates::parse_date_from_header;
+
 pub const PURINE_MASK: u8 = 0b0101;     // A (1) or G (4)
 pub const PYRIMIDINE_MASK: u8 = 0b1010; // C (2) or T (8)
 
@@ -500,6 +502,7 @@ impl Alignment {
     /// Parses an aligned FASTA string and optional date extraction regex.
     pub fn from_fasta_str(fasta_content: &str) -> Result<Self, String> {
         let mut headers = Vec::new();
+        let mut deflines: Vec<String> = Vec::new();
         let mut raw_seqs = Vec::new();
 
         let mut current_header = None;
@@ -518,6 +521,8 @@ impl Alignment {
                     current_seq = Vec::new();
                 }
                 let h = trimmed[1..].split_whitespace().next().unwrap_or("").to_string();
+                // dates are read from the whole defline, as run_danno.py does
+                deflines.push(trimmed[1..].trim().to_string());
                 current_header = Some(h);
             } else {
                 current_seq.extend_from_slice(trimmed.to_ascii_uppercase().as_bytes());
@@ -552,9 +557,8 @@ impl Alignment {
             encoded_tn93.push(codes);
             encoded_ints.push(ints);
 
-            // Attempt to parse date from header string
-            let d = parse_date_from_header(&headers[i]);
-            dates.push(d);
+            // Collection date from the defline; NaN when it carries none
+            dates.push(parse_date_from_header(&deflines[i]));
         }
 
         Ok(Self {
@@ -597,19 +601,6 @@ impl Alignment {
 
         matrix
     }
-}
-
-/// Helper function to parse a calendar year or decimal date from sequence header.
-pub fn parse_date_from_header(header: &str) -> f64 {
-    // Look for decimal date like 2014.25 or integer year like 2014
-    for token in header.split(|c| c == '|' || c == '_' || c == '/' || c == ' ') {
-        if let Ok(val) = token.parse::<f64>() {
-            if (1950.0..=2035.0).contains(&val) {
-                return val;
-            }
-        }
-    }
-    f64::NAN
 }
 
 #[cfg(test)]

@@ -8,6 +8,7 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
+use trace50_core::dates::parse_date_value;
 use trace50_core::{run_trace50_with_matrix, Alignment, Trace50Config};
 
 #[derive(Parser, Debug)]
@@ -110,65 +111,10 @@ struct CliArgs {
     seq_len: Option<u64>,
 }
 
-fn parse_date_string(date_str: &str) -> Option<f64> {
-    let s = date_str.trim().trim_matches('"');
-    if let Ok(val) = s.parse::<f64>() {
-        if (1950.0..=2035.0).contains(&val) {
-            return Some(val);
-        }
-    }
-
-    // Split by common date separators: '-', '/', '.', ' '
-    let parts: Vec<&str> = s.split(|c| c == '-' || c == '/' || c == '.' || c == ' ').filter(|p| !p.is_empty()).collect();
-    if parts.is_empty() {
-        return None;
-    }
-
-    let months = [
-        ("jan", 1.0), ("feb", 2.0), ("mar", 3.0), ("apr", 4.0),
-        ("may", 5.0), ("jun", 6.0), ("jul", 7.0), ("aug", 8.0),
-        ("sep", 9.0), ("oct", 10.0), ("nov", 11.0), ("dec", 12.0)
-    ];
-
-    let mut year = None;
-    let mut month = None;
-    let mut day = None;
-
-    for part in &parts {
-        let p_lower = part.to_ascii_lowercase();
-        // Check for month name
-        if let Some(&(_, m_num)) = months.iter().find(|(name, _)| p_lower.starts_with(name)) {
-            month = Some(m_num);
-            continue;
-        }
-
-        if let Ok(num) = part.parse::<f64>() {
-            if num >= 1950.0 && num <= 2035.0 {
-                year = Some(num);
-            } else if num >= 1.0 && num <= 31.0 {
-                if month.is_none() && num <= 12.0 && parts.len() == 3 && parts[0] == *part {
-                    // Possible month in MM/DD/YYYY
-                    month = Some(num);
-                } else if day.is_none() {
-                    day = Some(num);
-                } else if month.is_none() && num <= 12.0 {
-                    month = Some(num);
-                }
-            }
-        }
-    }
-
-    if let Some(y) = year {
-        let m = month.unwrap_or(6.5);
-        let d = day.unwrap_or(15.0);
-        let frac = (m - 1.0 + (d - 1.0) / 30.0) / 12.0;
-        return Some(y + frac);
-    }
-
-    None
-}
-
-fn parse_metadata_dates(meta_path: &Path, id_col: &str, date_col: &str) -> Result<std::collections::HashMap<String, f64>, String> {
+/// Reads `id_col` -> decimal date from a metadata CSV/TSV. Dates are parsed
+/// positionally by [`parse_date_value`]; rows whose date cannot be parsed are
+/// counted (second return value) and left out, so those sequences stay undated.
+fn parse_metadata_dates(meta_path: &Path, id_col: &str, date_col: &str) -> Result<(std::collections::HashMap<String, f64>, usize), String> {
     let file = File::open(meta_path).map_err(|e| format!("Failed to open metadata file: {}", e))?;
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
@@ -192,6 +138,7 @@ fn parse_metadata_dates(meta_path: &Path, id_col: &str, date_col: &str) -> Resul
         .ok_or_else(|| format!("Date column '{}' not found in metadata headers: {:?}", date_col, headers))?;
 
     let mut map = std::collections::HashMap::new();
+    let mut unparsed = 0usize;
 
     for line_res in lines {
         let line = line_res.map_err(|e| format!("Error reading metadata row: {}", e))?;
@@ -204,13 +151,16 @@ fn parse_metadata_dates(meta_path: &Path, id_col: &str, date_col: &str) -> Resul
             let id = fields[id_idx].to_string();
             let date_str = fields[date_idx];
 
-            if let Some(val) = parse_date_string(date_str) {
-                map.insert(id, val);
+            match parse_date_value(date_str) {
+                Some(val) => {
+                    map.insert(id, val);
+                }
+                None => unparsed += 1,
             }
         }
     }
 
-    Ok(map)
+    Ok((map, unparsed))
 }
 
 /// Loads a `tn93`-style pairwise distance CSV into a row-major n x n matrix
@@ -314,7 +264,13 @@ fn main() {
     if let Some(meta_path) = &args.meta {
         println!("[*] Reading metadata from: {}", meta_path.display());
         match parse_metadata_dates(meta_path, &args.id_col, &args.date_col) {
-            Ok(date_map) => {
+            Ok((date_map, unparsed)) => {
+                if unparsed > 0 {
+                    eprintln!(
+                        "[!] WARNING: {} metadata rows have a date that could not be parsed (accepted: YYYY-MM-DD, YYYY-MM, YYYY, DD-Mon-YYYY, Mon-YYYY, decimal year); they are ignored.",
+                        unparsed
+                    );
+                }
                 let mut matched = 0usize;
                 for (i, h) in alignment.headers.iter().enumerate() {
                     let clean_id = h.trim();
@@ -338,6 +294,23 @@ fn main() {
                 eprintln!("[!] Warning: metadata parsing failed: {}. Continuing with header dates.", e);
             }
         }
+    }
+
+    let num_undated = alignment.dates.iter().filter(|d| !d.is_finite()).count();
+    if num_undated == alignment.num_sequences() {
+        eprintln!("[!] ERROR: no sequence has a parseable collection date (from --meta or the FASTA headers). DANNO needs a sampling interval for every pair and cannot run.");
+        std::process::exit(1);
+    } else if num_undated > 0 {
+        eprintln!("================================================================================");
+        eprintln!(
+            "[!] WARNING: {} of {} sequences have NO collection date. They are EXCLUDED from",
+            num_undated,
+            alignment.num_sequences()
+        );
+        eprintln!("[!] DANNO and AutoClock (not imputed) and appear only in the static network.");
+        eprintln!("================================================================================");
+    } else {
+        println!("[*] Collection dates: all {} sequences dated.", alignment.num_sequences());
     }
 
     let config = Trace50Config {
@@ -449,10 +422,11 @@ fn main() {
     let mut nodes_file = File::create(&nodes_csv).expect("Failed to create nodes CSV");
     writeln!(nodes_file, "taxon_id,date,degree_static,degree_supported,cluster_static,cluster_supported,community_id,operational_tier").unwrap();
     for n in &dossier.nodes {
+        let date = if n.date.is_finite() { format!("{:.2}", n.date) } else { String::new() };
         writeln!(
             nodes_file,
-            "{},{:.2},{},{},{},{},{},\"{}\"",
-            n.id, n.date, n.degree_static, n.degree_supported, n.cluster_id_static, n.cluster_id_supported, n.community_id, n.operational_tier
+            "{},{},{},{},{},{},{},\"{}\"",
+            n.id, date, n.degree_static, n.degree_supported, n.cluster_id_static, n.cluster_id_supported, n.community_id, n.operational_tier
         ).unwrap();
     }
 

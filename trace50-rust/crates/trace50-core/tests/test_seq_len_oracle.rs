@@ -69,8 +69,11 @@ fn test_pipeline_uses_effective_len_and_override() {
     let o = oracle();
     let l = o["effective_len"].as_u64().unwrap() as usize;
     let width = o["alignment_width"].as_u64().unwrap() as usize;
-    let aln = Alignment::from_fasta_str(FASTA).unwrap();
+    let mut aln = Alignment::from_fasta_str(FASTA).unwrap();
     let n = aln.num_sequences();
+    // The toy headers carry no dates, and undated sequences are not imputed
+    // (the pipeline refuses to run without them); L does not depend on dates.
+    aln.dates = vec![2020.0; n];
 
     let dossier = run_trace50(&aln, &Trace50Config::default()).unwrap();
     assert_eq!(dossier.metadata.seq_len, l);

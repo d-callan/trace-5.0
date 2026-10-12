@@ -184,26 +184,14 @@ function parseAndValidateFasta(text) {
     }
   }
 
-  // Check date parsing in headers
+  // Count headers with a collection date, using the same formats as the
+  // engine's parser (trace50-core dates.rs): the DC form
+  // B.US.2013.DC1000_0131022_PR_RT.X, _YYYY.NN / _YYYY in the defline, or a
+  // '|' field holding YYYY-MM-DD, YYYY-MM, YYYY, DD-Mon-YYYY, Mon-YYYY or a
+  // decimal year. Undated sequences are excluded from DANNO, not imputed.
   let dateCount = 0;
   for (const rec of records) {
-    const parts = rec.header.split(/[|_]/);
-    let hasDate = false;
-    for (const p of parts) {
-      const pTrim = p.trim();
-      if (/^\d{4}-\d{2}(-\d{2})?$/.test(pTrim) || /^\d{4}\.\d+$/.test(pTrim)) {
-        hasDate = true;
-        break;
-      }
-      if (/^\d{4}$/.test(pTrim)) {
-        const yr = parseInt(pTrim, 10);
-        if (yr >= 1970 && yr <= 2035) {
-          hasDate = true;
-          break;
-        }
-      }
-    }
-    if (hasDate) dateCount++;
+    if (headerHasDate(rec.header)) dateCount++;
   }
 
   const missingDates = records.length - dateCount;
@@ -213,8 +201,43 @@ function parseAndValidateFasta(text) {
     seqLength: firstLen,
     dateCount,
     missingDates,
-    warning: missingDates > 0 ? `${missingDates} of ${records.length} sequences lack dates in headers (expected >ID|YYYY-MM-DD or >ID|YYYY.YY).` : null
+    warning: dateCount === 0
+      ? `no sequence has a collection date in its header (expected >ID|YYYY-MM-DD, >ID|YYYY.YY or ID_YYYY); DANNO cannot run.`
+      : missingDates > 0
+        ? `${missingDates} of ${records.length} sequences lack dates in headers and will be excluded from DANNO (not imputed).`
+        : null
   };
+}
+
+function headerHasDate(header) {
+  const h = header.trim();
+  if (/^[A-Za-z0-9_]+\.[A-Z]{2}\.(19|20)\d{2}\./.test(h)) return true;
+  for (const m of h.matchAll(/_((?:19|20)\d{2})(?:\.\d{1,2})?(?=[_\s]|$)/g)) {
+    const y = parseInt(m[1], 10);
+    if (y >= 1980 && y <= 2030) return true;
+  }
+  if (h.includes('|')) {
+    for (const f of h.split('|')) {
+      const v = f.trim().replace(/^"|"$/g, '').split('/')[0].trim();
+      let m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) {
+        const dt = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+        if (dt.getUTCMonth() === +m[2] - 1 && dt.getUTCDate() === +m[3]) return true;
+        continue;
+      }
+      m = v.match(/^\d{4}-(\d{2})$/);
+      if (m) {
+        if (+m[1] >= 1 && +m[1] <= 12) return true;
+        continue;
+      }
+      if (/^\d{4}$/.test(v) || /^\d{1,2}-[A-Za-z]{3}-\d{4}$/.test(v) || /^[A-Za-z]{3}-\d{4}$/.test(v)) return true;
+      if (/^\d{4}\.\d+$/.test(v)) {
+        const x = parseFloat(v);
+        if (x >= 1950 && x <= 2035) return true;
+      }
+    }
+  }
+  return false;
 }
 
 function handleFile(file) {
@@ -604,7 +627,7 @@ function renderNetworkGraph(dossier) {
       .html(`
         <div><strong>DYAD:</strong> ${d.source.id} ↔ ${d.target.id}</div>
         <div><strong>GENETIC DISTANCE d:</strong> ${(d.distance * 100).toFixed(2)}%</div>
-        <div><strong>SAMPLING DELAY ΔT:</strong> ${d.delta_t.toFixed(2)} yr</div>
+        <div><strong>SAMPLING DELAY ΔT:</strong> ${d.delta_t != null ? d.delta_t.toFixed(2) + ' yr' : 'N/A (undated)'}</div>
         <div><strong>BAYES FACTOR:</strong> ${d.bf > 0 ? d.bf.toExponential(2) : '0.00'}</div>
         <div><strong>FDR q:</strong> ${d.q !== undefined ? d.q.toFixed(4) : 'N/A'}</div>
         <div><strong>STATUS:</strong> <span style="font-weight:700;">${d.status.toUpperCase()}</span></div>
@@ -662,7 +685,9 @@ function renderPhaseSpace(dossier) {
     .attr("class", "viz-svg")
     .attr("viewBox", [0, 0, width, height]);
 
-  const maxDt = Math.max(4.0, d3.max(dossier.edges, e => e.delta_t_years) || 4.0);
+  // edges touching an undated sequence have no ΔT and are not placed here
+  const phaseEdges = dossier.edges.filter(e => e.delta_t_years != null);
+  const maxDt = Math.max(4.0, d3.max(phaseEdges, e => e.delta_t_years) || 4.0);
   const maxD = Math.max(0.025, d3.max(dossier.edges, e => e.distance) || 0.025);
 
   const x = d3.scaleLinear()
@@ -802,7 +827,7 @@ function renderPhaseSpace(dossier) {
 
   svg.append("g")
     .selectAll("circle")
-    .data(dossier.edges)
+    .data(phaseEdges)
     .join("circle")
     .attr("cx", d => x(d.delta_t_years))
     .attr("cy", d => y(d.distance))
@@ -954,7 +979,7 @@ window.filterTable = function() {
       <td>${e.source}</td>
       <td>${e.target}</td>
       <td>${(e.distance * 100).toFixed(2)}%</td>
-      <td>${e.delta_t_years.toFixed(2)}</td>
+      <td>${e.delta_t_years != null ? e.delta_t_years.toFixed(2) : 'N/A'}</td>
       <td>${e.k_substitutions.toFixed(0)}</td>
       <td>${bfText}</td>
       <td>${qText}</td>

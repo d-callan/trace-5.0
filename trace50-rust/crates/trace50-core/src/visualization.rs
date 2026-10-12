@@ -31,6 +31,10 @@ pub struct DossierMetadata {
     /// Number of alignment columns.
     #[serde(default)]
     pub alignment_width: usize,
+    /// Sequences without a parseable collection date. They are excluded from
+    /// DANNO and AutoClock (never imputed); their `date` is null.
+    #[serde(default)]
+    pub num_undated: usize,
     pub date_min: f64,
     pub date_max: f64,
     pub time_span_years: f64,

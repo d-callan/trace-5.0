@@ -106,26 +106,28 @@ pub fn run_trace50_with_matrix(
         return Err("sequence length L is 0: the alignment has no non-gap characters (set seq_len to override)".to_string());
     }
 
-    // 1. Process dates: impute median for any NaN
-    let mut valid_dates: Vec<f64> = alignment.dates.iter().copied().filter(|d| d.is_finite()).collect();
-    let med_date = if !valid_dates.is_empty() {
-        valid_dates.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        valid_dates[valid_dates.len() / 2]
-    } else {
-        2020.0
-    };
-
-    let mut dates = alignment.dates.clone();
+    // 1. Dates. Undated sequences (NaN) are excluded from everything that
+    // needs a sampling interval -- DANNO calibration and dyad scoring, and
+    // AutoClock -- and are never given an imputed date, as in
+    // validation/run_danno.py. They stay in the alignment, the static
+    // network and the node list.
+    let dates = alignment.dates.clone();
+    let dated: Vec<usize> = (0..n).filter(|&i| dates[i].is_finite()).collect();
+    let num_undated = n - dated.len();
+    if dated.len() < 2 {
+        return Err(format!(
+            "DANNO requires collection dates: {} of {} sequences have a parseable date, so no pair can be scored (undated sequences are excluded, not imputed)",
+            dated.len(),
+            n
+        ));
+    }
     let mut date_min = f64::INFINITY;
     let mut date_max = f64::NEG_INFINITY;
-    for d in &mut dates {
-        if !d.is_finite() {
-            *d = med_date;
-        }
-        if *d < date_min { date_min = *d; }
-        if *d > date_max { date_max = *d; }
+    for &i in &dated {
+        date_min = date_min.min(dates[i]);
+        date_max = date_max.max(dates[i]);
     }
-    let time_span_years = if date_max >= date_min { date_max - date_min } else { 0.0 };
+    let time_span_years = date_max - date_min;
 
     // 2. Pairwise TN93 distance matrix: supplied by the caller, or computed here
     let d_matrix = match d_matrix {
@@ -177,17 +179,47 @@ pub fn run_trace50_with_matrix(
         0.0004,
     );
 
-    let all_indices: Vec<usize> = (0..n).collect();
-    let mut dyads = danno.screen_dyads(
-        &all_indices,
-        &dates,
-        &d_matrix,
-        n,
-        config.max_delta_t,
-        config.prior_odds,
-        config.fdr_threshold,
-        config.use_robust_bf,
-    );
+    // DANNO sees only the dated sequences: the background is calibrated from
+    // dated pairs alone, as run_danno.py builds its matrix after dropping
+    // undated sequences. Dyad indices are mapped back to the alignment.
+    let mut dyads = if num_undated == 0 {
+        let all_indices: Vec<usize> = (0..n).collect();
+        danno.screen_dyads(
+            &all_indices,
+            &dates,
+            &d_matrix,
+            n,
+            config.max_delta_t,
+            config.prior_odds,
+            config.fdr_threshold,
+            config.use_robust_bf,
+        )
+    } else {
+        let m = dated.len();
+        let mut d_sub = vec![0.0; m * m];
+        for (a, &i) in dated.iter().enumerate() {
+            for (b, &j) in dated.iter().enumerate() {
+                d_sub[a * m + b] = d_matrix[i * n + j];
+            }
+        }
+        let sub_dates: Vec<f64> = dated.iter().map(|&i| dates[i]).collect();
+        let sub_indices: Vec<usize> = (0..m).collect();
+        let mut sub = danno.screen_dyads(
+            &sub_indices,
+            &sub_dates,
+            &d_sub,
+            m,
+            config.max_delta_t,
+            config.prior_odds,
+            config.fdr_threshold,
+            config.use_robust_bf,
+        );
+        for d in &mut sub {
+            d.idx1 = dated[d.idx1];
+            d.idx2 = dated[d.idx2];
+        }
+        sub
+    };
 
     // If InfoDANNO is enabled, reweight candidates using empirical allele frequencies
     if config.use_info_danno {
@@ -270,6 +302,25 @@ pub fn run_trace50_with_matrix(
         let p_pair = (i.min(j), i.max(j));
         if !seen_pairs.contains(&p_pair) {
             seen_pairs.insert(p_pair);
+            if !(dates[i].is_finite() && dates[j].is_finite()) {
+                // no sampling interval: not scored, not placed in phase space
+                dossier_edges.push(DossierEdge {
+                    source: alignment.headers[i].clone(),
+                    target: alignment.headers[j].clone(),
+                    source_idx: i,
+                    target_idx: j,
+                    distance: dist,
+                    delta_t_years: f64::NAN,
+                    k_substitutions: (dist * (l as f64)).max(0.0),
+                    bayes_factor: f64::NAN,
+                    pep: f64::NAN,
+                    q_value: f64::NAN,
+                    p_adequacy: f64::NAN,
+                    status: "static_undated".to_string(),
+                    is_static: true,
+                });
+                continue;
+            }
             let dt = (dates[i] - dates[j]).abs();
             let k = (dist * (l as f64)).max(0.0);
             let (p_adeq, is_adequate) = danno.check_clock_adequacy(k, dt, None);
@@ -319,7 +370,7 @@ pub fn run_trace50_with_matrix(
 
     // 5. STEVE / AutoClock Spectral Deconvolution
     let mut communities = recursive_autoclock_deconvolution(
-        &all_indices,
+        &dated,
         &dates,
         &d_matrix,
         n,
@@ -412,6 +463,7 @@ pub fn run_trace50_with_matrix(
             num_sequences: n,
             seq_len: l,
             alignment_width: alignment.seq_len,
+            num_undated,
             date_min,
             date_max,
             time_span_years,

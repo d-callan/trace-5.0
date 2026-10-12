@@ -4,6 +4,7 @@
 //! for native execution and WebAssembly compilation.
 
 pub mod math;
+pub mod dates;
 pub mod tn93;
 pub mod danno;
 pub mod info_danno;
