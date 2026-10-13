@@ -73,11 +73,17 @@
 
           <div class="demo-bar">
             <span>Benchmark Demos:</span>
-            <button class="btn-demo" onclick="loadDemoDataset('demo_outbreak.fasta', 'DEMO 1: OUTBREAK & CLOCK VIOLATIONS (10 SEQS)')">
-              DEMO 1: OUTBREAK & CLOCK VIOLATIONS
+            <button class="btn-demo" onclick="loadDemoDataset('demo_outbreak.fasta', 'DEMO 1: HIV-1 OUTBREAK & CLOCK VIOLATIONS (10 SEQS)', 'hiv1')">
+              DEMO 1: HIV-1
             </button>
-            <button class="btn-demo" onclick="loadDemoDataset('sample_micro_outbreak.fasta', 'DEMO 2: MICRO-OUTBREAK (6 SEQS)')">
-              DEMO 2: MICRO-OUTBREAK
+            <button class="btn-demo" onclick="loadDemoDataset('sample_micro_outbreak.fasta', 'DEMO 2: HIV-1 MICRO-OUTBREAK (6 SEQS)', 'hiv1')">
+              DEMO 2: HIV-1 MICRO
+            </button>
+            <button class="btn-demo" onclick="loadDemoDataset('demo_hcv_chronic.fasta', 'DEMO 3: HCV CHRONIC PWID NETWORK (9 SEQS)', 'hcv')">
+              DEMO 3: HCV CHRONIC
+            </button>
+            <button class="btn-demo" onclick="loadDemoDataset('demo_norovirus_acute.fasta', 'DEMO 4: NOROVIRUS ACUTE OUTBREAK (8 SEQS)', 'norovirus')">
+              DEMO 4: NOROVIRUS ACUTE
             </button>
           </div>
 
@@ -112,6 +118,22 @@ ACGT...                    (Identical length across all entries)</div>
           <div class="card-title">
             <span>Surveillance Hyperparameters</span>
             <span style="font-size:0.7rem; font-family:var(--font-mono); color:var(--text-muted);">PHYSICAL COALESCENT & CLOCK CONTROLS</span>
+          </div>
+
+          <div class="preset-selector-group">
+            <label for="select-pathogen-preset" class="preset-label">PATHOGEN SURVEILLANCE PRESET</label>
+            <div class="preset-controls">
+              <select id="select-pathogen-preset" class="preset-select">
+                <option value="hiv1" selected>HIV-1 (pol: PR/RT/IN) — Chronic Reservoir (Default)</option>
+                <option value="hcv">HCV (Hepatitis C: NS5B / Core-E2) — Chronic Quasispecies</option>
+                <option value="norovirus">Norovirus (VP1: Capsid) — Acute Outbreak</option>
+                <option value="sars2">SARS-CoV-2 (Spike / ORF1ab) — Acute Respiratory</option>
+                <option value="custom">Custom (User-Calibrated)</option>
+              </select>
+            </div>
+            <div id="preset-description" class="preset-desc">
+              HIV-1 pol: μ = 0.0020 sub/site/yr · τ̄ = 1.0 yr intra-host reservoir · ω = 2.0 yr sampling delay · TN93 = 1.5%
+            </div>
           </div>
 
           <div class="params-grid">
@@ -154,6 +176,58 @@ ACGT...                    (Identical length across all entries)</div>
           </button>
         </div>
 
+      </div>
+    </div>
+
+    <!-- PIPELINE EXECUTION MONITOR: Real-Time Progress for Large Cohorts -->
+    <div id="progress-container" style="display: none; margin-bottom: 2rem;">
+      <div class="section-meta">PIPELINE MONITOR / EXECUTION METRICS</div>
+      <div class="card progress-card" id="progress-card">
+        <div class="progress-header">
+          <div class="progress-title-block">
+            <span class="progress-pulse-dot" id="progress-pulse-dot"></span>
+            <span class="progress-title" id="progress-stage-title">SURVEILLANCE ANALYSIS INITIALIZING...</span>
+          </div>
+          <div class="progress-meta-block">
+            <span class="progress-elapsed" id="progress-elapsed">ELAPSED: 00:00.0</span>
+            <span class="progress-percent" id="progress-percent">0%</span>
+          </div>
+        </div>
+
+        <!-- Progress Bar Track -->
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progress-bar-fill" style="width: 0%;"></div>
+        </div>
+
+        <!-- Live Subtitle / Details -->
+        <div class="progress-detail-row">
+          <span class="progress-detail" id="progress-detail">Preparing sequence data and initializing runtime...</span>
+          <span class="progress-speed" id="progress-speed"></span>
+        </div>
+
+        <!-- Stage Stepper Breadcrumbs -->
+        <div class="progress-stepper">
+          <div class="step-item" id="step-alignment"><span class="step-num">1</span> Ingest</div>
+          <div class="step-sep">→</div>
+          <div class="step-item" id="step-tn93"><span class="step-num">2</span> TN93 Matrix</div>
+          <div class="step-sep">→</div>
+          <div class="step-item" id="step-static"><span class="step-num">3</span> Legacy Network</div>
+          <div class="step-sep">→</div>
+          <div class="step-item" id="step-danno"><span class="step-num">4</span> DANNO Bayes</div>
+          <div class="step-sep">→</div>
+          <div class="step-item" id="step-steve"><span class="step-num">5</span> STEVE Spectral</div>
+          <div class="step-sep">→</div>
+          <div class="step-item" id="step-chin"><span class="step-num">6</span> CHIN Scaling</div>
+          <div class="step-sep">→</div>
+          <div class="step-item" id="step-dossier"><span class="step-num">7</span> Dossier</div>
+        </div>
+
+        <div class="progress-footer">
+          <span class="progress-note">100% Client-Side WebAssembly · Zero data transmitted across network</span>
+          <button class="btn-abort" id="btn-abort" type="button">
+            ✕ ABORT ANALYSIS
+          </button>
+        </div>
       </div>
     </div>
 
