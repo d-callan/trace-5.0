@@ -39,7 +39,8 @@ import networkx as nx
 from Bio import SeqIO
 
 # Ensure trace50 is on python path
-TRACE50_DIR = "/Users/sergei/Projects/trace50"
+TRACE50_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WORKSPACE = os.environ.get("TOGA_MEME_WORKSPACE", os.path.join(os.path.dirname(TRACE50_DIR), "TOGA_MEME"))
 if TRACE50_DIR not in sys.path:
     sys.path.insert(0, TRACE50_DIR)
 
@@ -119,6 +120,13 @@ def evaluate_cohort(
     for a1, a2 in zip(df_hist.loc[df_hist['Distance'] <= 0.015, 'id1'], df_hist.loc[df_hist['Distance'] <= 0.015, 'id2']):
         G_15.add_edge(a1, a2)
     c_15 = [list(c) for c in nx.connected_components(G_15) if len(c) >= 2]
+
+    # Baseline linked cases in static TN93 <= 1.5% clusters
+    baseline_15_cases = set()
+    for c in c_15:
+        for h in c:
+            baseline_15_cases.update(hist_to_prosp.get(h, set()))
+    n_baseline_cases = max(len(baseline_15_cases), 1)
 
     # 2. Wertheim Sqrt relative growth (Delta N / sqrt(N) >= 0.70)
     c_wertheim = []
@@ -233,23 +241,33 @@ def evaluate_cohort(
         'Static TN93 <= 0.5% (All >= 2)': c_05,
     }
 
+    c_danno_05 = None
     for q_val in q_danno_list:
         G_danno = nx.Graph()
         for c in cand:
             if c['q'] <= q_val and c['pep'] <= 0.50:
                 G_danno.add_edge(c['id1'], c['id2'])
         c_danno = [list(comp) for comp in nx.connected_components(G_danno) if len(comp) >= 2]
+        if abs(q_val - 0.05) < 1e-6:
+            c_danno_05 = c_danno
         label = f'DANNO (q <= {q_val:0.3f}, dt <= 2 yr)' if q_val < 0.01 else f'DANNO (q <= {q_val:0.2f}, dt <= 2 yr)'
         methods[label] = c_danno
 
     if prio_steve:
         methods['AutoClock STEVE (Active & Emergent Prioritized)'] = prio_steve
+        if c_danno_05 is not None:
+            G_union = nx.Graph()
+            for comp in c_danno_05 + prio_steve:
+                for i in range(len(comp) - 1):
+                    G_union.add_edge(comp[i], comp[i + 1])
+            c_union = [list(comp) for comp in nx.connected_components(G_union) if len(comp) >= 2]
+            methods['Joint DANNO + STEVE (Union, q <= 0.05 U Tier 1-2)'] = c_union
     if chronic_steve:
         methods['AutoClock STEVE (Stationary Chronic / Dormant)'] = chronic_steve
 
     records = []
-    print(f"\n  {'Method':<38} | {'Clust':<5} | {'TargetPts':<9} | {'Grow':<5} | {'PPV (%)':<8} | {'Grow12':<6} | {'PPV12 (%)':<9} | {'Cases':<6} | {'Yield'}")
-    print(f"  {'-' * 105}")
+    print(f"\n  {'Method':<48} | {'Clust':<5} | {'TargetPts':<9} | {'Grow':<5} | {'PPV (%)':<8} | {'Grow12':<6} | {'PPV12 (%)':<9} | {'Cases':<6} | {'Recall':<7} | {'Yield'}")
+    print(f"  {'-' * 125}")
 
     for mname, clusters in methods.items():
         n_cl = len(clusters)
@@ -273,6 +291,7 @@ def evaluate_cohort(
 
         ppv = (grow / n_cl * 100) if n_cl > 0 else 0.0
         ppv_12 = (grow_12 / n_cl * 100) if n_cl > 0 else 0.0
+        recall_pct = min(100.0, len(cases_linked) / n_baseline_cases * 100.0)
         yield_pt = (len(cases_linked) / target_pts) if target_pts > 0 else 0.0
         false_alarms = n_cl - grow
 
@@ -286,14 +305,15 @@ def evaluate_cohort(
             'Growing_Clusters_12mo': grow_12,
             'PPV_12mo_Pct': ppv_12,
             'Prospective_Cases_Linked': len(cases_linked),
+            'Case_Recall_Pct': recall_pct,
             'Yield_Per_Patient': yield_pt,
             'False_Alarm_Clusters': false_alarms,
             'Execution_Time_Sec': round(time.time() - t0, 2)
         }
         records.append(rec)
-        print(f"  {mname:<38} | {n_cl:>5} | {target_pts:>9} | {grow:>5} | {ppv:>7.1f}% | {grow_12:>6} | {ppv_12:>8.1f}% | {len(cases_linked):>6} | {yield_pt:>6.3f}")
+        print(f"  {mname:<48} | {n_cl:>5} | {target_pts:>9} | {grow:>5} | {ppv:>7.1f}% | {grow_12:>6} | {ppv_12:>8.1f}% | {len(cases_linked):>6} | {recall_pct:>6.1f}% | {yield_pt:>6.3f}")
 
-    print(f"  {'-' * 105}")
+    print(f"  {'-' * 125}")
     print(f"  Completed {cohort_name} in {time.time() - t0:.2f} seconds.\n")
 
     return records
@@ -310,7 +330,7 @@ def main():
     # 1. Washington, DC Longitudinal Cohort
     # --------------------------------------------------------------------------
     try:
-        dc_meta_path = "/Users/sergei/Projects/TOGA_MEME/BV-BRC/data/hiv_cohort_dc/hiv_dc_metadata.csv"
+        dc_meta_path = os.path.join(WORKSPACE, "BV-BRC/data/hiv_cohort_dc/hiv_dc_metadata.csv")
         dc_meta = pd.read_csv(dc_meta_path)
         date_map_dc = dict(zip(dc_meta['accession'], dc_meta['decimal_date']))
         t_censor_dc = 2012.50
@@ -320,8 +340,8 @@ def main():
         dc_prosp_12 = dc_meta[(dc_meta['decimal_date'] > t_censor_dc) & (dc_meta['decimal_date'] <= t_censor_dc + 1.0)]['accession'].tolist()
 
         # Compute or load joint distance matrix
-        fasta_b = "/Users/sergei/Projects/TOGA_MEME/BV-BRC/results/hiv_dc_cohort/hiv_dc_subtype_b_frame_locked.fasta"
-        fasta_c = "/Users/sergei/Projects/TOGA_MEME/BV-BRC/results/hiv_dc_cohort/hiv_dc_subtype_c_frame_locked.fasta"
+        fasta_b = os.path.join(WORKSPACE, "BV-BRC/results/hiv_dc_cohort/hiv_dc_subtype_b_frame_locked.fasta")
+        fasta_c = os.path.join(WORKSPACE, "BV-BRC/results/hiv_dc_cohort/hiv_dc_subtype_c_frame_locked.fasta")
         recs_b = list(SeqIO.parse(fasta_b, "fasta"))
         recs_c = list(SeqIO.parse(fasta_c, "fasta"))
         for r in recs_b + recs_c:
@@ -347,7 +367,7 @@ def main():
         df_edges_dc = pd.DataFrame(edge_rows)
 
         # Load authentic multi-subtype reference-anchored AutoClock deconvolution for Washington, DC
-        dc_pred_file = "/Users/sergei/Projects/TOGA_MEME/BV-BRC/results/hiv_dc_cohort/predictive_growth_benchmark/cluster_level_predictions_2012_5.csv"
+        dc_pred_file = os.path.join(WORKSPACE, "BV-BRC/results/hiv_dc_cohort/predictive_growth_benchmark/cluster_level_predictions_2012_5.csv")
         prio_dc = None
         chronic_dc = None
         if os.path.exists(dc_pred_file):
@@ -390,8 +410,8 @@ def main():
     # 2. Shenzhen, China MSM Cohort (CRF07_BC)
     # --------------------------------------------------------------------------
     try:
-        cn_meta_path = "/Users/sergei/Projects/TOGA_MEME/dating_paper/analyses/chinese_crf07_shenzhen/data/shenzhen_crf07_msm_metadata.tsv"
-        cn_edges_path = "/Users/sergei/Projects/TOGA_MEME/dating_paper/analyses/chinese_crf07_shenzhen/data/shenzhen_pairwise_tn93.csv"
+        cn_meta_path = os.path.join(WORKSPACE, "dating_paper/analyses/chinese_crf07_shenzhen/data/shenzhen_crf07_msm_metadata.tsv")
+        cn_edges_path = os.path.join(WORKSPACE, "dating_paper/analyses/chinese_crf07_shenzhen/data/shenzhen_pairwise_tn93.csv")
         df_meta_cn = pd.read_csv(cn_meta_path, sep='\t')
         date_map_cn = dict(zip(df_meta_cn['SequenceID'], df_meta_cn['Sampling_Year']))
         t_censor_cn = 2010.0
@@ -428,8 +448,8 @@ def main():
     # 3. Middle Tennessee Surveillance Cohort
     # --------------------------------------------------------------------------
     try:
-        tn_meta_path = "/Users/sergei/Projects/trace50/data/tennessee_cohort/tennessee_metadata.csv"
-        tn_edges_path = "/Users/sergei/Projects/trace50/data/tennessee_cohort/tn93_distances_003.csv"
+        tn_meta_path = os.path.join(TRACE50_DIR, "data/tennessee_cohort/tennessee_metadata.csv")
+        tn_edges_path = os.path.join(TRACE50_DIR, "data/tennessee_cohort/tn93_distances_003.csv")
         df_meta_tn = pd.read_csv(tn_meta_path)
         date_map_tn = dict(zip(df_meta_tn['accession'], df_meta_tn['year']))
         t_censor_tn = 2010.0
@@ -466,19 +486,19 @@ def main():
     # 4. Japan Nationwide NIID Cohort
     # --------------------------------------------------------------------------
     try:
-        jp_meta_path = "/Users/sergei/Projects/trace50/data/japan_cohort/japan_dedup_5232_metadata.csv"
-        jp_edges_path = "/Users/sergei/Projects/trace50/data/japan_cohort/tn93_distances_003.csv"
+        jp_meta_path = os.path.join(TRACE50_DIR, "data/japan_cohort/japan_dedup_5232_metadata.csv")
+        jp_edges_path = os.path.join(TRACE50_DIR, "data/japan_cohort/tn93_distances_003.csv")
         df_meta_jp = pd.read_csv(jp_meta_path)
-        date_map_jp = dict(zip(df_meta_jp['accession'], df_meta_jp['year']))
+        date_map_jp = dict(zip(df_meta_jp['id'], df_meta_jp['year']))
         t_censor_jp = 2008.0
 
-        jp_hist = df_meta_jp[df_meta_jp['year'] <= t_censor_jp]['accession'].tolist()
-        jp_prosp = df_meta_jp[df_meta_jp['year'] > t_censor_jp]['accession'].tolist()
-        jp_prosp_12 = df_meta_jp[(df_meta_jp['year'] > t_censor_jp) & (df_meta_jp['year'] <= t_censor_jp + 1.0)]['accession'].tolist()
+        jp_hist = df_meta_jp[df_meta_jp['year'] <= t_censor_jp]['id'].tolist()
+        jp_prosp = df_meta_jp[df_meta_jp['year'] > t_censor_jp]['id'].tolist()
+        jp_prosp_12 = df_meta_jp[(df_meta_jp['year'] > t_censor_jp) & (df_meta_jp['year'] <= t_censor_jp + 1.0)]['id'].tolist()
 
         df_edges_jp = pd.read_csv(jp_edges_path)
-        df_edges_jp['id1'] = df_edges_jp['ID1'].apply(lambda x: x.split('_')[0])
-        df_edges_jp['id2'] = df_edges_jp['ID2'].apply(lambda x: x.split('_')[0])
+        df_edges_jp['id1'] = df_edges_jp['ID1']
+        df_edges_jp['id2'] = df_edges_jp['ID2']
 
         jp_recs = evaluate_cohort(
             cohort_name="Japan Nationwide NIID ($N=5{,}232$, Subtype B)",
@@ -510,60 +530,12 @@ def main():
     with open(out_json, "w") as f:
         json.dump(all_records, f, indent=2)
 
-    # Export LaTeX Table
-    eol = chr(92) + chr(92)
-    latex_rows = []
-    for cohort, group in df_all.groupby('Cohort', sort=False):
-        latex_rows.append(r'\midrule')
-        clean_cohort = cohort.replace('&', r'\&').replace('_', r'\_')
-        latex_rows.append(f'\\multicolumn{{8}}{{l}}{{\\textbf{{{clean_cohort}}}}} {eol}')
-        latex_rows.append(r'\midrule')
-        for _, r in group.iterrows():
-            m = (
-                r['Method']
-                .replace('&', r'\&')
-                .replace('<=', r'$\le$ ')
-                .replace('>=', r'$\ge$ ')
-                .replace('%', r'\%')
-                .replace('q <=', r'$q \le$ ')
-                .replace('dt <=', r'$\Delta T \le$ ')
-                .replace('AutoClock STEVE', r'AutoClock \STEVE')
-                .replace('DANNO', r'\DANNO')
-            )
-            cl = int(r['Prioritized_Clusters'])
-            pts = int(r['Targeted_Patients'])
-            ppv_f = f"{r['PPV_Full_Pct']:.1f}\%"
-            ppv_12 = f"{r['PPV_12mo_Pct']:.1f}\%"
-            cases = int(r['Prospective_Cases_Linked'])
-            yld = f"{r['Yield_Per_Patient']:.3f}"
-            false_al = int(r['False_Alarm_Clusters'])
-            row_str = f"{m} & {cl} & {pts} & {ppv_f} & {ppv_12} & {cases} & {yld} & {false_al} {eol}"
-            latex_rows.append(row_str)
-
-    tex_content = r'''\begin{table*}[t]
-\centering
-\footnotesize
-\caption{\textbf{Standardized prospective transmission surveillance validation across four diverse molecular HIV-1 cohorts.} Prospective case accrual was evaluated following the protocol of Wertheim et al. across Washington, DC ($N=1{,}658$), Shenzhen, China ($N=454$), Middle Tennessee ($N=2{,}915$), and nationwide surveillance in Japan ($N=5{,}232$). Across all four distinct epidemic regimes, \STEVE evolutionary velocity and \DANNO coalescent screening consistently outpace static distance cutoffs ($d \le 1.5\%$) and historical growth metrics (Wertheim $\Delta N / \sqrt{N} \ge 0.70$), dramatically improving precision at the critical 12-month public health planning window and maximizing resource-normalized case yield per targeted patient.}
-\label{tab:multi_cohort_prospective_validation}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lrrrrrrr@{}}
-\toprule
-\textbf{Surveillance Strategy} & \textbf{Clusters} & \textbf{Targeted} & \textbf{PPV} & \textbf{PPV} & \textbf{Cases} & \textbf{Case Yield} & \textbf{False} \\
-& ($N_{\mathrm{cl}}$) & \textbf{Patients} & (Full) & (12-Mo) & \textbf{Linked} & (Per Patient) & \textbf{Alarms} \\
-''' + '\n'.join(latex_rows) + r'''
-\bottomrule
-\end{tabular*}
-\end{table*}
-'''
-    paper_tex_path = "/Users/sergei/Projects/trace50/paper/table_multi_cohort_prospective_validation.tex"
-    with open(paper_tex_path, 'w') as f:
-        f.write(tex_content)
-
-    print("\n" + "=" * 110)
+    print("\n" + "=" * 120)
     print("UNIFIED MULTI-COHORT PROSPECTIVE VALIDATION SCORECARD")
-    print("=" * 110)
-    print(df_all[['Cohort', 'Method', 'Prioritized_Clusters', 'Targeted_Patients', 'PPV_Full_Pct', 'PPV_12mo_Pct', 'Prospective_Cases_Linked', 'Yield_Per_Patient']].to_string(index=False))
-    print("=" * 110)
-    print(f"\nSaved master results to:\n  CSV:   {out_csv}\n  JSON:  {out_json}\n  LaTeX: {paper_tex_path}")
+    print("=" * 120)
+    print(df_all[['Cohort', 'Method', 'Prioritized_Clusters', 'Targeted_Patients', 'PPV_Full_Pct', 'PPV_12mo_Pct', 'Prospective_Cases_Linked', 'Case_Recall_Pct', 'Yield_Per_Patient']].to_string(index=False))
+    print("=" * 120)
+    print(f"\nSaved master results to:\n  CSV:   {out_csv}\n  JSON:  {out_json}")
 
 
 if __name__ == "__main__":

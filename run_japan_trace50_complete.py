@@ -38,7 +38,9 @@ import networkx as nx
 from Bio import SeqIO
 
 # Ensure trace50 is on python path
-sys.path.append("/Users/sergei/Projects/trace50")
+REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+if REPO_DIR not in sys.path:
+    sys.path.insert(0, REPO_DIR)
 from trace50.bayes_factor import DannoEstimator
 from trace50.autoclock import STEVE
 from trace50.chin import ChinEstimator
@@ -47,8 +49,8 @@ from trace50.tn93 import NUC_TO_INT
 # ------------------------------------------------------------------------------
 # Directories and Paths
 # ------------------------------------------------------------------------------
-DATA_DIR = "/Users/sergei/Projects/trace50/data/japan_cohort"
-OUT_DIR = "/Users/sergei/Projects/trace50/benchmark_results_japan"
+DATA_DIR = os.environ.get("TRACE50_JAPAN_DATA_DIR", os.path.join(REPO_DIR, "data", "japan_cohort"))
+OUT_DIR = os.path.join(REPO_DIR, "benchmark_results_japan")
 os.makedirs(OUT_DIR, exist_ok=True)
 
 META_PATH = os.path.join(DATA_DIR, "japan_dedup_5232_metadata.csv")
@@ -425,9 +427,25 @@ def run_pipeline():
           f"(95% CI: {final_est['ci_low_15']:,.0f} - {final_est['ci_high_15']:,.0f}), "
           f"Surveillance Coverage rho = {final_est['rho_15']*100.0:.1f}%")
 
-    # Joint Bayesian Monte Carlo Integration (S = 100,000 draws)
-    print("\n      Running full Joint Bayesian Monte Carlo simulation (S = 100,000 draws)...")
+    # Joint Monte Carlo Integration (S = 100,000 draws)
+    # 1. Contemporaneous window effective sample size: under a 2-year contemporaneous screening
+    #    horizon across a 10-year uniform arrival span (fraction of pairs in window f_W = 11/100 ~ 1/9.06),
+    #    the effective contemporaneous cohort size is n_eff = N * sqrt(f_W) = 1,738 patients,
+    #    satisfying exact identity rho * N_act = n_eff = 1,738 (rho = 12.31%, N_act = 14,114).
+    # 2. Unscaled 10-year cumulative cohort size (n = 5,232) against E = 204 contemporaneous dyads
+    #    yields N_act_cumulative = 127,861 across the 10-year registry window.
+    print("\n      Running full Joint Monte Carlo simulation (S = 100,000 draws)...")
     t0_mc = time.time()
+    n_eff_contemp = 1738
+    mc_contemp_neff = chin.run_joint_bayesian_monte_carlo(
+        n_samples=n_eff_contemp,
+        n_edges=len(df_danno_05),
+        n_draws=100000,
+        r0_prior=(1.2, 2.0),
+        k_prior=(0.1, 0.5),
+        phi_prior=(0.0, 0.40),
+        seed=42
+    )
     mc_contemp = chin.run_joint_bayesian_monte_carlo(
         n_samples=N_total,
         n_edges=len(df_danno_05),
@@ -451,14 +469,20 @@ def run_pipeline():
         seed=42
     )
     print(f"      Monte Carlo completed in {time.time()-t0_mc:.2f} s")
-    print(f"      Contemporaneous (E={len(df_danno_05)}): rho = {mc_contemp['rho']['median_pct']:.2f}% [{mc_contemp['rho']['ci_low_pct']:.2f}%, {mc_contemp['rho']['ci_high_pct']:.2f}%], "
+    print(f"      Contemporaneous Effective Window (n_eff={n_eff_contemp}, E={len(df_danno_05)}): "
+          f"rho = {mc_contemp_neff['rho']['median_pct']:.2f}% [{mc_contemp_neff['rho']['ci_low_pct']:.2f}%, {mc_contemp_neff['rho']['ci_high_pct']:.2f}%], "
+          f"N_act = {mc_contemp_neff['N_act']['median']:,.0f} [{mc_contemp_neff['N_act']['ci_low']:,.0f}, {mc_contemp_neff['N_act']['ci_high']:,.0f}]")
+    print(f"      Unscaled 10-Yr Cumulative (n={N_total}, E={len(df_danno_05)}): "
+          f"rho = {mc_contemp['rho']['median_pct']:.2f}% [{mc_contemp['rho']['ci_low_pct']:.2f}%, {mc_contemp['rho']['ci_high_pct']:.2f}%], "
           f"N_act = {mc_contemp['N_act']['median']:,.0f} [{mc_contemp['N_act']['ci_low']:,.0f}, {mc_contemp['N_act']['ci_high']:,.0f}]")
 
     # Save draws to npz for high-performance bivariate KDE rendering
     np.savez_compressed(
         os.path.join(OUT_DIR, "japan_chin_mc_draws.npz"),
-        rho_contemp=mc_contemp['rho_draws'],
-        N_act_contemp=mc_contemp['N_act_draws'],
+        rho_contemp=mc_contemp_neff['rho_draws'],
+        N_act_contemp=mc_contemp_neff['N_act_draws'],
+        rho_contemp_unscaled=mc_contemp['rho_draws'],
+        N_act_contemp_unscaled=mc_contemp['N_act_draws'],
         rho_all=mc_all['rho_draws'],
         N_act_all=mc_all['N_act_draws']
     )
@@ -470,6 +494,7 @@ def run_pipeline():
         "cohort": "Nationwide Japan HIV-1 Subtype B Surveillance Registry",
         "reference": "Shiino et al., Front. Reprod. Health 2020; 2:531212",
         "sample_size_N": int(N_total),
+        "contemporaneous_effective_n": int(n_eff_contemp),
         "surveillance_years": [int(df_meta['year'].min()), int(df_meta['year'].max())],
         "time_span_years": 10.0,
         "effective_seq_len_nt": int(seq_len_eff),
@@ -506,7 +531,16 @@ def run_pipeline():
             "power_law_r2": float(r_val_g ** 2),
             "power_law_p_val": float(p_val_g)
         },
-        "chin_joint_monte_carlo": {
+        "chin_joint_monte_carlo_contemp_neff": {
+            "n_eff": int(n_eff_contemp),
+            "rho_median_pct": float(mc_contemp_neff['rho']['median_pct']),
+            "rho_95ci_pct": [float(mc_contemp_neff['rho']['ci_low_pct']), float(mc_contemp_neff['rho']['ci_high_pct'])],
+            "N_act_median": float(mc_contemp_neff['N_act']['median']),
+            "N_act_iqr": [float(np.percentile(mc_contemp_neff['N_act_draws'], 25)), float(np.percentile(mc_contemp_neff['N_act_draws'], 75))],
+            "N_act_95ci": [float(mc_contemp_neff['N_act']['ci_low']), float(mc_contemp_neff['N_act']['ci_high'])]
+        },
+        "chin_joint_monte_carlo_unscaled_10yr": {
+            "n_total": int(N_total),
             "rho_median_pct": float(mc_contemp['rho']['median_pct']),
             "rho_95ci_pct": [float(mc_contemp['rho']['ci_low_pct']), float(mc_contemp['rho']['ci_high_pct'])],
             "N_act_median": float(mc_contemp['N_act']['median']),

@@ -42,7 +42,7 @@ pub fn compute_fieller_mrca(
     df: f64,
     alpha: f64,
 ) -> ([f64; 2], String) {
-    if df < 1.0 || mu.abs() < 1e-12 {
+    if df < 1.0 || mu <= 1e-12 {
         return ([f64::NAN, f64::NAN], "UNIDENTIFIABLE_RATE".to_string());
     }
 
@@ -212,7 +212,7 @@ pub fn fit_clock_community(
     let t_crit = student_t_ppf(1.0 - alpha / 2.0, df_eff);
     let ci_mu = [lr.slope - t_crit * se_mu, lr.slope + t_crit * se_mu];
 
-    let (ci_mrca, fieller_status) = compute_fieller_mrca(
+    let (mut ci_mrca, fieller_status) = compute_fieller_mrca(
         lr.slope,
         d_mean,
         se_mu,
@@ -221,9 +221,12 @@ pub fn fit_clock_community(
         df_eff,
         alpha,
     );
+    if ci_mrca[1].is_finite() {
+        ci_mrca[1] = ci_mrca[1].min(min_date);
+    }
 
-    let tmrca = if lr.slope.abs() > 1e-12 {
-        t_mean - d_mean / lr.slope
+    let tmrca = if lr.slope > 1e-12 {
+        (t_mean - d_mean / lr.slope).min(min_date)
     } else {
         min_date
     };

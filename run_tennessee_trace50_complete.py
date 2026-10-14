@@ -37,7 +37,9 @@ import networkx as nx
 from Bio import SeqIO
 
 # Ensure trace50 is on python path
-sys.path.append("/Users/sergei/Projects/trace50")
+REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+if REPO_DIR not in sys.path:
+    sys.path.insert(0, REPO_DIR)
 from trace50.bayes_factor import DannoEstimator
 from trace50.autoclock import (
     STEVE, fit_clock_community, compute_bartlett_neff, compute_fieller_mrca
@@ -48,8 +50,8 @@ from trace50.tn93 import NUC_TO_INT
 # ------------------------------------------------------------------------------
 # Directories and Paths
 # ------------------------------------------------------------------------------
-DATA_DIR = "/Users/sergei/Projects/trace50/data/tennessee_cohort"
-OUT_DIR = "/Users/sergei/Projects/trace50/benchmark_results_tennessee"
+DATA_DIR = os.environ.get("TRACE50_TENNESSEE_DATA_DIR", os.path.join(REPO_DIR, "data", "tennessee_cohort"))
+OUT_DIR = os.path.join(REPO_DIR, "benchmark_results_tennessee")
 os.makedirs(OUT_DIR, exist_ok=True)
 
 META_PATH = os.path.join(DATA_DIR, "tennessee_metadata.csv")

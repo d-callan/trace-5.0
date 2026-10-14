@@ -9,6 +9,7 @@
     "Growing_Clusters_12mo": 8,
     "PPV_12mo_Pct": 19.51219512195122,
     "Prospective_Cases_Linked": 56,
+    "Case_Recall_Pct": 100.0,
     "Yield_Per_Patient": 0.4,
     "False_Alarm_Clusters": 28,
     "Execution_Time_Sec": 0.1
@@ -23,6 +24,7 @@
     "Growing_Clusters_12mo": 7,
     "PPV_12mo_Pct": 21.21212121212121,
     "Prospective_Cases_Linked": 55,
+    "Case_Recall_Pct": 98.21428571428571,
     "Yield_Per_Patient": 0.45081967213114754,
     "False_Alarm_Clusters": 21,
     "Execution_Time_Sec": 0.1
@@ -37,6 +39,7 @@
     "Growing_Clusters_12mo": 6,
     "PPV_12mo_Pct": 24.0,
     "Prospective_Cases_Linked": 46,
+    "Case_Recall_Pct": 82.14285714285714,
     "Yield_Per_Patient": 0.71875,
     "False_Alarm_Clusters": 16,
     "Execution_Time_Sec": 0.1
@@ -51,6 +54,7 @@
     "Growing_Clusters_12mo": 2,
     "PPV_12mo_Pct": 13.333333333333334,
     "Prospective_Cases_Linked": 5,
+    "Case_Recall_Pct": 8.928571428571429,
     "Yield_Per_Patient": 0.16129032258064516,
     "False_Alarm_Clusters": 11,
     "Execution_Time_Sec": 0.1
@@ -65,6 +69,7 @@
     "Growing_Clusters_12mo": 4,
     "PPV_12mo_Pct": 18.181818181818183,
     "Prospective_Cases_Linked": 43,
+    "Case_Recall_Pct": 76.78571428571429,
     "Yield_Per_Patient": 0.7962962962962963,
     "False_Alarm_Clusters": 15,
     "Execution_Time_Sec": 0.1
@@ -79,6 +84,7 @@
     "Growing_Clusters_12mo": 6,
     "PPV_12mo_Pct": 25.0,
     "Prospective_Cases_Linked": 46,
+    "Case_Recall_Pct": 82.14285714285714,
     "Yield_Per_Patient": 0.7540983606557377,
     "False_Alarm_Clusters": 15,
     "Execution_Time_Sec": 0.1
@@ -93,8 +99,24 @@
     "Growing_Clusters_12mo": 7,
     "PPV_12mo_Pct": 58.333333333333336,
     "Prospective_Cases_Linked": 21,
+    "Case_Recall_Pct": 37.5,
     "Yield_Per_Patient": 0.13291139240506328,
     "False_Alarm_Clusters": 2,
+    "Execution_Time_Sec": 0.1
+  },
+  {
+    "Cohort": "Washington, DC ($N=1{,}658$, Subtypes B & C)",
+    "Method": "Joint DANNO + STEVE (Union, q <= 0.05 U Tier 1-2)",
+    "Prioritized_Clusters": 28,
+    "Targeted_Patients": 201,
+    "Growing_Clusters_Full": 14,
+    "PPV_Full_Pct": 50.0,
+    "Growing_Clusters_12mo": 11,
+    "PPV_12mo_Pct": 39.285714285714285,
+    "Prospective_Cases_Linked": 52,
+    "Case_Recall_Pct": 92.85714285714286,
+    "Yield_Per_Patient": 0.25870646766169153,
+    "False_Alarm_Clusters": 14,
     "Execution_Time_Sec": 0.1
   },
   {
@@ -107,6 +129,7 @@
     "Growing_Clusters_12mo": 10,
     "PPV_12mo_Pct": 62.5,
     "Prospective_Cases_Linked": 105,
+    "Case_Recall_Pct": 100.0,
     "Yield_Per_Patient": 0.15217391304347827,
     "False_Alarm_Clusters": 5,
     "Execution_Time_Sec": 0.1
@@ -121,9 +144,10 @@
     "Growing_Clusters_12mo": 1,
     "PPV_12mo_Pct": 12.5,
     "Prospective_Cases_Linked": 271,
+    "Case_Recall_Pct": 100.0,
     "Yield_Per_Patient": 1.856164383561644,
     "False_Alarm_Clusters": 4,
-    "Execution_Time_Sec": 1.01
+    "Execution_Time_Sec": 1.06
   },
   {
     "Cohort": "Shenzhen, China ($N=454$, CRF07_BC)",
@@ -135,9 +159,10 @@
     "Growing_Clusters_12mo": 1,
     "PPV_12mo_Pct": 25.0,
     "Prospective_Cases_Linked": 270,
+    "Case_Recall_Pct": 99.63099630996311,
     "Yield_Per_Patient": 2.0930232558139537,
     "False_Alarm_Clusters": 2,
-    "Execution_Time_Sec": 1.01
+    "Execution_Time_Sec": 1.06
   },
   {
     "Cohort": "Shenzhen, China ($N=454$, CRF07_BC)",
@@ -149,9 +174,10 @@
     "Growing_Clusters_12mo": 1,
     "PPV_12mo_Pct": 20.0,
     "Prospective_Cases_Linked": 271,
+    "Case_Recall_Pct": 100.0,
     "Yield_Per_Patient": 2.0846153846153848,
     "False_Alarm_Clusters": 3,
-    "Execution_Time_Sec": 1.01
+    "Execution_Time_Sec": 1.06
   },
   {
     "Cohort": "Shenzhen, China ($N=454$, CRF07_BC)",
@@ -163,9 +189,10 @@
     "Growing_Clusters_12mo": 5,
     "PPV_12mo_Pct": 62.5,
     "Prospective_Cases_Linked": 271,
+    "Case_Recall_Pct": 100.0,
     "Yield_Per_Patient": 2.509259259259259,
     "False_Alarm_Clusters": 2,
-    "Execution_Time_Sec": 1.01
+    "Execution_Time_Sec": 1.06
   },
   {
     "Cohort": "Shenzhen, China ($N=454$, CRF07_BC)",
@@ -177,9 +204,10 @@
     "Growing_Clusters_12mo": 5,
     "PPV_12mo_Pct": 62.5,
     "Prospective_Cases_Linked": 271,
+    "Case_Recall_Pct": 100.0,
     "Yield_Per_Patient": 2.463636363636364,
     "False_Alarm_Clusters": 2,
-    "Execution_Time_Sec": 1.01
+    "Execution_Time_Sec": 1.06
   },
   {
     "Cohort": "Shenzhen, China ($N=454$, CRF07_BC)",
@@ -191,9 +219,10 @@
     "Growing_Clusters_12mo": 3,
     "PPV_12mo_Pct": 50.0,
     "Prospective_Cases_Linked": 271,
+    "Case_Recall_Pct": 100.0,
     "Yield_Per_Patient": 2.2583333333333333,
     "False_Alarm_Clusters": 2,
-    "Execution_Time_Sec": 1.01
+    "Execution_Time_Sec": 1.06
   },
   {
     "Cohort": "Shenzhen, China ($N=454$, CRF07_BC)",
@@ -205,9 +234,10 @@
     "Growing_Clusters_12mo": 3,
     "PPV_12mo_Pct": 50.0,
     "Prospective_Cases_Linked": 271,
+    "Case_Recall_Pct": 100.0,
     "Yield_Per_Patient": 2.221311475409836,
     "False_Alarm_Clusters": 2,
-    "Execution_Time_Sec": 1.01
+    "Execution_Time_Sec": 1.06
   },
   {
     "Cohort": "Shenzhen, China ($N=454$, CRF07_BC)",
@@ -219,9 +249,10 @@
     "Growing_Clusters_12mo": 2,
     "PPV_12mo_Pct": 33.33333333333333,
     "Prospective_Cases_Linked": 271,
+    "Case_Recall_Pct": 100.0,
     "Yield_Per_Patient": 2.10077519379845,
     "False_Alarm_Clusters": 3,
-    "Execution_Time_Sec": 1.01
+    "Execution_Time_Sec": 1.06
   },
   {
     "Cohort": "Shenzhen, China ($N=454$, CRF07_BC)",
@@ -233,9 +264,10 @@
     "Growing_Clusters_12mo": 5,
     "PPV_12mo_Pct": 55.55555555555556,
     "Prospective_Cases_Linked": 270,
+    "Case_Recall_Pct": 99.63099630996311,
     "Yield_Per_Patient": 1.9285714285714286,
     "False_Alarm_Clusters": 2,
-    "Execution_Time_Sec": 1.01
+    "Execution_Time_Sec": 1.06
   },
   {
     "Cohort": "Middle Tennessee ($N=2{,}915$, Subtype B)",
@@ -247,9 +279,10 @@
     "Growing_Clusters_12mo": 35,
     "PPV_12mo_Pct": 22.29299363057325,
     "Prospective_Cases_Linked": 271,
+    "Case_Recall_Pct": 100.0,
     "Yield_Per_Patient": 0.3608521970705726,
     "False_Alarm_Clusters": 91,
-    "Execution_Time_Sec": 2.07
+    "Execution_Time_Sec": 2.13
   },
   {
     "Cohort": "Middle Tennessee ($N=2{,}915$, Subtype B)",
@@ -261,9 +294,10 @@
     "Growing_Clusters_12mo": 11,
     "PPV_12mo_Pct": 30.555555555555557,
     "Prospective_Cases_Linked": 148,
+    "Case_Recall_Pct": 54.61254612546126,
     "Yield_Per_Patient": 0.39050131926121373,
     "False_Alarm_Clusters": 18,
-    "Execution_Time_Sec": 2.07
+    "Execution_Time_Sec": 2.13
   },
   {
     "Cohort": "Middle Tennessee ($N=2{,}915$, Subtype B)",
@@ -275,9 +309,10 @@
     "Growing_Clusters_12mo": 33,
     "PPV_12mo_Pct": 21.710526315789476,
     "Prospective_Cases_Linked": 220,
+    "Case_Recall_Pct": 81.18081180811808,
     "Yield_Per_Patient": 0.4365079365079365,
     "False_Alarm_Clusters": 84,
-    "Execution_Time_Sec": 2.07
+    "Execution_Time_Sec": 2.13
   },
   {
     "Cohort": "Middle Tennessee ($N=2{,}915$, Subtype B)",
@@ -289,9 +324,10 @@
     "Growing_Clusters_12mo": 26,
     "PPV_12mo_Pct": 26.804123711340207,
     "Prospective_Cases_Linked": 161,
+    "Case_Recall_Pct": 59.40959409594095,
     "Yield_Per_Patient": 0.6388888888888888,
     "False_Alarm_Clusters": 45,
-    "Execution_Time_Sec": 2.07
+    "Execution_Time_Sec": 2.13
   },
   {
     "Cohort": "Middle Tennessee ($N=2{,}915$, Subtype B)",
@@ -303,9 +339,10 @@
     "Growing_Clusters_12mo": 36,
     "PPV_12mo_Pct": 27.06766917293233,
     "Prospective_Cases_Linked": 227,
+    "Case_Recall_Pct": 83.76383763837639,
     "Yield_Per_Patient": 0.4829787234042553,
     "False_Alarm_Clusters": 65,
-    "Execution_Time_Sec": 2.07
+    "Execution_Time_Sec": 2.13
   },
   {
     "Cohort": "Middle Tennessee ($N=2{,}915$, Subtype B)",
@@ -317,9 +354,10 @@
     "Growing_Clusters_12mo": 36,
     "PPV_12mo_Pct": 27.06766917293233,
     "Prospective_Cases_Linked": 227,
+    "Case_Recall_Pct": 83.76383763837639,
     "Yield_Per_Patient": 0.47890295358649787,
     "False_Alarm_Clusters": 65,
-    "Execution_Time_Sec": 2.07
+    "Execution_Time_Sec": 2.13
   },
   {
     "Cohort": "Middle Tennessee ($N=2{,}915$, Subtype B)",
@@ -331,9 +369,25 @@
     "Growing_Clusters_12mo": 1,
     "PPV_12mo_Pct": 16.666666666666664,
     "Prospective_Cases_Linked": 10,
+    "Case_Recall_Pct": 3.6900369003690034,
     "Yield_Per_Patient": 0.5263157894736842,
     "False_Alarm_Clusters": 1,
-    "Execution_Time_Sec": 2.07
+    "Execution_Time_Sec": 2.13
+  },
+  {
+    "Cohort": "Middle Tennessee ($N=2{,}915$, Subtype B)",
+    "Method": "Joint DANNO + STEVE (Union, q <= 0.05 U Tier 1-2)",
+    "Prioritized_Clusters": 133,
+    "Targeted_Patients": 473,
+    "Growing_Clusters_Full": 68,
+    "PPV_Full_Pct": 51.127819548872175,
+    "Growing_Clusters_12mo": 36,
+    "PPV_12mo_Pct": 27.06766917293233,
+    "Prospective_Cases_Linked": 227,
+    "Case_Recall_Pct": 83.76383763837639,
+    "Yield_Per_Patient": 0.4799154334038055,
+    "False_Alarm_Clusters": 65,
+    "Execution_Time_Sec": 2.13
   },
   {
     "Cohort": "Middle Tennessee ($N=2{,}915$, Subtype B)",
@@ -345,9 +399,10 @@
     "Growing_Clusters_12mo": 37,
     "PPV_12mo_Pct": 44.57831325301205,
     "Prospective_Cases_Linked": 225,
+    "Case_Recall_Pct": 83.02583025830258,
     "Yield_Per_Patient": 0.4166666666666667,
     "False_Alarm_Clusters": 22,
-    "Execution_Time_Sec": 2.07
+    "Execution_Time_Sec": 2.13
   },
   {
     "Cohort": "Japan Nationwide NIID ($N=5{,}232$, Subtype B)",
@@ -359,9 +414,10 @@
     "Growing_Clusters_12mo": 45,
     "PPV_12mo_Pct": 27.607361963190186,
     "Prospective_Cases_Linked": 1424,
+    "Case_Recall_Pct": 100.0,
     "Yield_Per_Patient": 0.74750656167979,
     "False_Alarm_Clusters": 78,
-    "Execution_Time_Sec": 6.95
+    "Execution_Time_Sec": 7.07
   },
   {
     "Cohort": "Japan Nationwide NIID ($N=5{,}232$, Subtype B)",
@@ -373,9 +429,10 @@
     "Growing_Clusters_12mo": 25,
     "PPV_12mo_Pct": 35.714285714285715,
     "Prospective_Cases_Linked": 1315,
+    "Case_Recall_Pct": 92.34550561797754,
     "Yield_Per_Patient": 0.8229036295369212,
     "False_Alarm_Clusters": 27,
-    "Execution_Time_Sec": 6.95
+    "Execution_Time_Sec": 7.07
   },
   {
     "Cohort": "Japan Nationwide NIID ($N=5{,}232$, Subtype B)",
@@ -387,9 +444,10 @@
     "Growing_Clusters_12mo": 101,
     "PPV_12mo_Pct": 43.34763948497854,
     "Prospective_Cases_Linked": 1329,
+    "Case_Recall_Pct": 93.32865168539325,
     "Yield_Per_Patient": 0.9526881720430107,
     "False_Alarm_Clusters": 79,
-    "Execution_Time_Sec": 6.95
+    "Execution_Time_Sec": 7.07
   },
   {
     "Cohort": "Japan Nationwide NIID ($N=5{,}232$, Subtype B)",
@@ -401,9 +459,10 @@
     "Growing_Clusters_12mo": 129,
     "PPV_12mo_Pct": 55.36480686695279,
     "Prospective_Cases_Linked": 1078,
+    "Case_Recall_Pct": 75.70224719101124,
     "Yield_Per_Patient": 1.4221635883905013,
     "False_Alarm_Clusters": 55,
-    "Execution_Time_Sec": 6.95
+    "Execution_Time_Sec": 7.07
   },
   {
     "Cohort": "Japan Nationwide NIID ($N=5{,}232$, Subtype B)",
@@ -415,9 +474,10 @@
     "Growing_Clusters_12mo": 110,
     "PPV_12mo_Pct": 46.61016949152542,
     "Prospective_Cases_Linked": 1262,
+    "Case_Recall_Pct": 88.62359550561798,
     "Yield_Per_Patient": 1.0613961312026914,
     "False_Alarm_Clusters": 75,
-    "Execution_Time_Sec": 6.96
+    "Execution_Time_Sec": 7.07
   },
   {
     "Cohort": "Japan Nationwide NIID ($N=5{,}232$, Subtype B)",
@@ -429,9 +489,10 @@
     "Growing_Clusters_12mo": 108,
     "PPV_12mo_Pct": 45.76271186440678,
     "Prospective_Cases_Linked": 1291,
+    "Case_Recall_Pct": 90.66011235955057,
     "Yield_Per_Patient": 1.0062353858144972,
     "False_Alarm_Clusters": 74,
-    "Execution_Time_Sec": 6.96
+    "Execution_Time_Sec": 7.07
   },
   {
     "Cohort": "Japan Nationwide NIID ($N=5{,}232$, Subtype B)",
@@ -443,9 +504,25 @@
     "Growing_Clusters_12mo": 2,
     "PPV_12mo_Pct": 50.0,
     "Prospective_Cases_Linked": 7,
+    "Case_Recall_Pct": 0.49157303370786515,
     "Yield_Per_Patient": 0.5833333333333334,
     "False_Alarm_Clusters": 1,
-    "Execution_Time_Sec": 6.96
+    "Execution_Time_Sec": 7.07
+  },
+  {
+    "Cohort": "Japan Nationwide NIID ($N=5{,}232$, Subtype B)",
+    "Method": "Joint DANNO + STEVE (Union, q <= 0.05 U Tier 1-2)",
+    "Prioritized_Clusters": 236,
+    "Targeted_Patients": 1191,
+    "Growing_Clusters_Full": 161,
+    "PPV_Full_Pct": 68.22033898305084,
+    "Growing_Clusters_12mo": 110,
+    "PPV_12mo_Pct": 46.61016949152542,
+    "Prospective_Cases_Linked": 1262,
+    "Case_Recall_Pct": 88.62359550561798,
+    "Yield_Per_Patient": 1.0596137699412258,
+    "False_Alarm_Clusters": 75,
+    "Execution_Time_Sec": 7.07
   },
   {
     "Cohort": "Japan Nationwide NIID ($N=5{,}232$, Subtype B)",
@@ -457,8 +534,9 @@
     "Growing_Clusters_12mo": 67,
     "PPV_12mo_Pct": 57.26495726495726,
     "Prospective_Cases_Linked": 1362,
+    "Case_Recall_Pct": 95.64606741573034,
     "Yield_Per_Patient": 0.7978910369068541,
     "False_Alarm_Clusters": 23,
-    "Execution_Time_Sec": 6.96
+    "Execution_Time_Sec": 7.07
   }
 ]

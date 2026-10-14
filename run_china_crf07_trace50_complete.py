@@ -43,7 +43,9 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
 # Ensure trace50 is on python path
-sys.path.append("/Users/sergei/Projects/trace50")
+REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+if REPO_DIR not in sys.path:
+    sys.path.insert(0, REPO_DIR)
 from trace50.bayes_factor import DannoEstimator
 from trace50.autoclock import STEVE
 from trace50.chin import ChinEstimator
@@ -67,9 +69,12 @@ plt.rcParams.update({
 # ------------------------------------------------------------------------------
 # Directories and Paths
 # ------------------------------------------------------------------------------
-DATA_DIR = "/Users/sergei/Projects/TOGA_MEME/dating_paper/analyses/chinese_crf07_shenzhen/data"
-OUT_DIR = "/Users/sergei/Projects/trace50/benchmark_results_china"
-PAPER_FIG_DIR = "/Users/sergei/Projects/trace50/paper/figures"
+DEFAULT_DATA_DIR = os.path.join(REPO_DIR, "data", "china_cohort")
+if not os.path.exists(DEFAULT_DATA_DIR):
+    DEFAULT_DATA_DIR = os.path.join(os.path.dirname(REPO_DIR), "TOGA_MEME", "dating_paper", "analyses", "chinese_crf07_shenzhen", "data")
+DATA_DIR = os.environ.get("TRACE50_CHINA_DATA_DIR", DEFAULT_DATA_DIR)
+OUT_DIR = os.path.join(REPO_DIR, "benchmark_results_china")
+PAPER_FIG_DIR = os.path.join(REPO_DIR, "paper", "figures")
 os.makedirs(OUT_DIR, exist_ok=True)
 os.makedirs(PAPER_FIG_DIR, exist_ok=True)
 
@@ -445,7 +450,7 @@ def run_pipeline():
         slope_gamma, intercept_g, r_val_g, p_val_g, _ = stats.linregress(log_n[valid_pts], log_e[valid_pts])
         print(f"      CHIN Collision Scaling Exponent: gamma = {slope_gamma:.3f} (R^2 = {r_val_g**2:.3f}, p = {p_val_g:.4e})")
     else:
-        slope_gamma, r_val_g, p_val_g = 1.85, 0.98, 1e-4
+        slope_gamma, r_val_g, p_val_g = np.nan, np.nan, np.nan
 
     final_est = df_annual.iloc[-1]
     print(f"      Final 2012 CHIN Estimate: N_act = {final_est['N_act_15']:,.0f} "
@@ -469,8 +474,8 @@ def run_pipeline():
     q_rho = np.percentile(rho_draws, [2.5, 25, 50, 75, 97.5])
     q_nact = np.percentile(n_act_draws, [2.5, 25, 50, 75, 97.5])
 
-    print(f"      Bayesian Posterior Surveillance Coverage rho: {q_rho[2]*100:.2f}% (IQR: [{q_rho[1]*100:.2f}%, {q_rho[3]*100:.2f}%], 95% CrI: [{q_rho[0]*100:.2f}%, {q_rho[4]*100:.2f}%])")
-    print(f"      Bayesian Posterior Active Transmitting Pool N_act: {q_nact[2]:,.0f} (IQR: [{q_nact[1]:,.0f}, {q_nact[3]:,.0f}], 95% CrI: [{q_nact[0]:,.0f}, {q_nact[4]:,.0f}])")
+    print(f"      Monte Carlo Surveillance Coverage rho: {q_rho[2]*100:.2f}% (IQR: [{q_rho[1]*100:.2f}%, {q_rho[3]*100:.2f}%], 95% UI: [{q_rho[0]*100:.2f}%, {q_rho[4]*100:.2f}%])")
+    print(f"      Monte Carlo Active Transmitting Pool N_act: {q_nact[2]:,.0f} (IQR: [{q_nact[1]:,.0f}, {q_nact[3]:,.0f}], 95% UI: [{q_nact[0]:,.0f}, {q_nact[4]:,.0f}])")
 
     # Save Monte Carlo draws
     np.savez_compressed(
@@ -538,7 +543,8 @@ def run_pipeline():
             "gamma_r2": float(r_val_g ** 2),
             "gamma_pval": float(p_val_g),
             "rho_median": float(q_rho[2]),
-            "rho_ci": [float(q_rho[0]), float(q_rho[4])],
+            "rho_ci": [float(q_rho[0]), float(min(1.0, q_rho[4]))],
+            "rho_ci_unclamped": [float(q_rho[0]), float(q_rho[4])],
             "N_act_median": float(q_nact[2]),
             "N_act_ci": [float(q_nact[0]), float(q_nact[4])]
         }
@@ -549,10 +555,11 @@ def run_pipeline():
     # --------------------------------------------------------------------------
     # 6. Generate Publication Figure (Figure 10)
     # --------------------------------------------------------------------------
-    print("\n[6/6] Generating Publication Figure 10 via generate_figure_case_china_continuum.py...")
+    print("\n[6/6] Generating Publication Figure via generate_figure_case_china_continuum.py...")
     import subprocess
-    fig_script = "/Users/sergei/Projects/trace50/paper/figures/generate_figure_case_china_continuum.py"
-    subprocess.run(["python3", fig_script], check=True)
+    fig_script = os.path.join(PAPER_FIG_DIR, "generate_figure_case_china_continuum.py")
+    if os.path.exists(fig_script):
+        subprocess.run([sys.executable, fig_script], check=True)
     print(f"\nTRACE-5.0 China CRF07 pipeline completed in {time.time() - t_start:.2f} s.")
 
 

@@ -428,8 +428,9 @@ pub fn linregress(x: &[f64], y: &[f64]) -> Option<LinearRegression> {
     })
 }
 
-/// Jacobi Eigenvalue Algorithm for real symmetric n x n matrices.
-/// Guarantees unconditional convergence and produces sorted eigenvalues and orthogonal eigenvectors.
+/// Cyclic Jacobi Eigenvalue Algorithm for real symmetric n x n matrices.
+/// Each iteration performs a full cyclic sweep over all upper-triangular pairs (p, q),
+/// guaranteeing quadratic convergence for arbitrary matrix dimensions n.
 ///
 /// Output: `(eigenvalues, eigenvectors)`
 /// - `eigenvalues`: sorted in ascending order.
@@ -441,19 +442,23 @@ pub fn jacobi_eigensystem(matrix: &[f64], n: usize, max_iter: usize, tol: f64) -
         v[i * n + i] = 1.0;
     }
 
-    for _ in 0..max_iter {
-        // Find largest off-diagonal element
-        let mut max_offdiag = 0.0;
-        let mut p = 0;
-        let mut q = 1;
+    if n <= 1 {
+        let evals = if n == 1 { vec![a[0]] } else { Vec::new() };
+        return (evals, v);
+    }
 
+    let max_sweeps = max_iter.clamp(15, 60);
+
+    for sweep in 0..max_sweeps {
+        // Compute maximum off-diagonal magnitude and off-diagonal Frobenius norm
+        let mut max_offdiag = 0.0;
+        let mut sum_offdiag = 0.0;
         for i in 0..n {
             for j in (i + 1)..n {
                 let val = a[i * n + j].abs();
+                sum_offdiag += val;
                 if val > max_offdiag {
                     max_offdiag = val;
-                    p = i;
-                    q = j;
                 }
             }
         }
@@ -462,37 +467,60 @@ pub fn jacobi_eigensystem(matrix: &[f64], n: usize, max_iter: usize, tol: f64) -
             break;
         }
 
-        let app = a[p * n + p];
-        let aqq = a[q * n + q];
-        let apq = a[p * n + q];
+        // Rutishauser threshold on first 3 sweeps, then sweep all elements above tol / n
+        let tresh = if sweep < 3 {
+            0.2 * sum_offdiag / ((n * n) as f64)
+        } else {
+            0.0
+        };
 
-        let phi = 0.5 * (2.0 * apq).atan2(aqq - app);
-        let c = phi.cos();
-        let s = phi.sin();
+        for p in 0..n {
+            for q in (p + 1)..n {
+                let apq = a[p * n + q];
+                let abs_apq = apq.abs();
 
-        // Perform rotation on matrix A
-        for i in 0..n {
-            if i != p && i != q {
-                let aip = a[i * n + p];
-                let aiq = a[i * n + q];
-                a[i * n + p] = c * aip - s * aiq;
-                a[p * n + i] = a[i * n + p];
-                a[i * n + q] = s * aip + c * aiq;
-                a[q * n + i] = a[i * n + q];
+                if sweep > 3 && abs_apq <= tol * 1e-3 {
+                    a[p * n + q] = 0.0;
+                    a[q * n + p] = 0.0;
+                    continue;
+                }
+
+                if abs_apq > tresh && abs_apq > tol * 1e-3 {
+                    let app = a[p * n + p];
+                    let aqq = a[q * n + q];
+
+                    let phi = 0.5 * (2.0 * apq).atan2(aqq - app);
+                    let c = phi.cos();
+                    let s = phi.sin();
+
+                    // Perform rotation on matrix A
+                    for i in 0..n {
+                        if i != p && i != q {
+                            let aip = a[i * n + p];
+                            let aiq = a[i * n + q];
+                            let new_ip = c * aip - s * aiq;
+                            let new_iq = s * aip + c * aiq;
+                            a[i * n + p] = new_ip;
+                            a[p * n + i] = new_ip;
+                            a[i * n + q] = new_iq;
+                            a[q * n + i] = new_iq;
+                        }
+                    }
+
+                    a[p * n + p] = c * c * app - 2.0 * s * c * apq + s * s * aqq;
+                    a[q * n + q] = s * s * app + 2.0 * s * c * apq + c * c * aqq;
+                    a[p * n + q] = 0.0;
+                    a[q * n + p] = 0.0;
+
+                    // Accumulate transformation into V
+                    for i in 0..n {
+                        let vip = v[i * n + p];
+                        let viq = v[i * n + q];
+                        v[i * n + p] = c * vip - s * viq;
+                        v[i * n + q] = s * vip + c * viq;
+                    }
+                }
             }
-        }
-
-        a[p * n + p] = c * c * app - 2.0 * s * c * apq + s * s * aqq;
-        a[q * n + q] = s * s * app + 2.0 * s * c * apq + c * c * aqq;
-        a[p * n + q] = 0.0;
-        a[q * n + p] = 0.0;
-
-        // Accumulate transformation into V
-        for i in 0..n {
-            let vip = v[i * n + p];
-            let viq = v[i * n + q];
-            v[i * n + p] = c * vip - s * viq;
-            v[i * n + q] = s * vip + c * viq;
         }
     }
 
@@ -548,5 +576,45 @@ mod tests {
         let (evals, _) = jacobi_eigensystem(&m, 2, 100, 1e-12);
         assert!((evals[0] - 1.0).abs() < 1e-6);
         assert!((evals[1] - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_jacobi_eigensystem_large_laplacian() {
+        // 120x120 normalized graph Laplacian with two weakly coupled 60-node blocks
+        let n = 120;
+        let mut w: Vec<f64> = vec![0.0; n * n];
+        let mut deg: Vec<f64> = vec![0.0; n];
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let same_block = (i < 60 && j < 60) || (i >= 60 && j >= 60);
+                let weight = if same_block { 1.0 } else { 0.02 };
+                w[i * n + j] = weight;
+                w[j * n + i] = weight;
+                deg[i] += weight;
+                deg[j] += weight;
+            }
+        }
+        let mut l_sym = vec![0.0; n * n];
+        for i in 0..n {
+            l_sym[i * n + i] = 1.0;
+            for j in 0..n {
+                if i != j {
+                    l_sym[i * n + j] = -w[i * n + j] / (deg[i] * deg[j]).sqrt();
+                }
+            }
+        }
+        let (evals, evecs) = jacobi_eigensystem(&l_sym, n, 200, 1e-10);
+        // Smallest eigenvalue of normalized Laplacian is 0.0
+        assert!(evals[0].abs() < 1e-9, "lambda_1 = {}", evals[0]);
+        // Second eigenvalue (Fiedler value) for two weakly coupled blocks is small positive
+        assert!(evals[1] > 0.01 && evals[1] < 0.10, "lambda_2 = {}", evals[1]);
+        // Fiedler vector (column 1) must cleanly separate block 0..60 from 60..120 by sign
+        let sign_0 = evecs[1].signum();
+        for i in 0..60 {
+            assert_eq!(evecs[i * n + 1].signum(), sign_0);
+        }
+        for i in 60..120 {
+            assert_eq!(evecs[i * n + 1].signum(), -sign_0);
+        }
     }
 }
